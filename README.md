@@ -1,0 +1,53 @@
+# Identity Inspector
+
+Diagnostics for OIDC, SAML SSO, and SCIM integrations.
+
+It reads what a target publishes, judges it against the specifications, current security practice, and known interop problems, and says plainly which claims were verified and which were only read from a document.
+
+Every finding carries a provenance:
+
+- `discovered` - read from a document the target published
+- `user-supplied` - pasted or uploaded by you
+- `executed` - a request this tool actually made
+- `illustrative` - shown for explanation, never performed
+
+## Use
+
+```sh
+pnpm install
+pnpm build
+node packages/cli/dist/main.js inspect accounts.google.com
+node packages/cli/dist/main.js inspect https://mocksaml.com/api/saml/metadata
+node packages/cli/dist/main.js inspect ./idp-metadata.xml --format md
+SCIM_TOKEN=... node packages/cli/dist/main.js inspect https://app.example/scim/v2
+```
+
+The protocol is detected from the target; pass `--protocol` to skip detection.
+The command exits 1 when a finding reaches `--fail-on` (default `error`), so it can gate CI.
+`--at <ISO date>` judges time-bounded evidence as of another instant, for example the moment an incident happened.
+
+## Status
+
+Milestone 1 is in progress: static inspection of published documents for all three protocols, in the CLI.
+The web interface, the proxy, pasted tokens and assertions, signature verification, probes, and live flows are not built yet.
+
+## Layout
+
+- `CONTEXT.md` - the project's vocabulary
+- `docs/adr/` - decisions that would otherwise look odd
+- `packages/core` - the engine: evidence collection, checks, reports
+- `packages/cli` - the `idi` command
+
+## Develop
+
+```sh
+pnpm test
+pnpm lint
+```
+
+Check identifiers are a public contract and are never renamed (see `docs/adr/0003-stable-check-ids.md`).
+A check needs at least two scenarios with different verdicts in `packages/core/test/checks.test.ts` before it ships.
+
+## License
+
+Apache-2.0

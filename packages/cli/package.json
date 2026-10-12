@@ -1,0 +1,12 @@
+{
+  "name": "@identity-inspector/cli",
+  "version": "0.0.0",
+  "type": "module",
+  "license": "Apache-2.0",
+  "bin": {
+    "idi": "./dist/main.js"
+  },
+  "dependencies": {
+    "@identity-inspector/core": "workspace:*"
+  }
+}

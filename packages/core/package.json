@@ -1,0 +1,15 @@
+{
+  "name": "@identity-inspector/core",
+  "version": "0.0.0",
+  "type": "module",
+  "license": "Apache-2.0",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "dependencies": {
+    "@xmldom/xmldom": "^0.9.8"
+  }
+}
