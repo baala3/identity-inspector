@@ -62,33 +62,37 @@ function FindingCard({ finding }: { finding: Finding }) {
   return (
     <li className={`finding ${finding.severity}`}>
       <div className="finding-head">
-        <span className={`badge ${finding.severity}`}>{finding.severity}</span>
         <h3>{finding.title}</h3>
-      </div>
-      <p className="detail">{finding.detail}</p>
-      {remediation.length > 0 && (
-        <dl className="remediation">
-          {remediation.map(([role, text]) => (
-            <div key={role}>
-              <dt>{roleLabel(role)}</dt>
-              <dd>{text}</dd>
-            </div>
-          ))}
-        </dl>
-      )}
-      <div className="finding-meta">
-        <code>{finding.checkId}</code>
-        <span className="tag">{finding.category}</span>
-        <span
-          className={`tag provenance ${finding.provenance}`}
-          title={PROVENANCE[finding.provenance]}
-        >
-          {finding.provenance}
+        <span className="notch">
+          <span className={`badge ${finding.severity}`}>{finding.severity}</span>
         </span>
-        {finding.pointer && <code className="pointer">{finding.pointer}</code>}
-        <a href={finding.citation.url} target="_blank" rel="noreferrer">
-          {finding.citation.label}
-        </a>
+      </div>
+      <div className="finding-body">
+        <p className="detail">{finding.detail}</p>
+        {remediation.length > 0 && (
+          <dl className="remediation">
+            {remediation.map(([role, text]) => (
+              <div key={role}>
+                <dt>{roleLabel(role)}</dt>
+                <dd>{text}</dd>
+              </div>
+            ))}
+          </dl>
+        )}
+        <div className="finding-meta">
+          <code>{finding.checkId}</code>
+          <span className="tag">{finding.category}</span>
+          <span
+            className={`tag provenance ${finding.provenance}`}
+            title={PROVENANCE[finding.provenance]}
+          >
+            {finding.provenance}
+          </span>
+          {finding.pointer && <code className="pointer">{finding.pointer}</code>}
+          <a href={finding.citation.url} target="_blank" rel="noreferrer">
+            {finding.citation.label}
+          </a>
+        </div>
       </div>
     </li>
   );
@@ -189,30 +193,39 @@ export function App() {
   return (
     <div className="page">
       <header className="masthead">
-        <h1>Identity Inspector</h1>
-        <p>
-          Diagnostics for OIDC, SAML SSO, and SCIM that say what was verified and what was only
-          read.
-        </p>
-        <button
-          type="button"
-          className="theme"
-          aria-pressed={dark}
-          aria-label="Dark theme"
-          title={dark ? 'Switch to light theme' : 'Switch to dark theme'}
-          onClick={toggleTheme}
-        >
-          <svg viewBox="0 0 24 24" aria-hidden="true">
-            {dark ? (
-              <>
-                <circle cx="12" cy="12" r="4" />
-                <path d="M12 3v2M12 19v2M3 12h2M19 12h2M5.6 5.6l1.4 1.4M17 17l1.4 1.4M5.6 18.4 7 17M17 7l1.4-1.4" />
-              </>
-            ) : (
-              <path d="M20 14.5A8 8 0 0 1 9.5 4a8 8 0 1 0 10.5 10.5z" />
-            )}
+        <div className="brand">
+          <svg className="mark" viewBox="0 0 40 40" aria-hidden="true">
+            <rect width="40" height="40" rx="9" />
+            <circle cx="18" cy="18" r="7" />
+            <path d="m23.5 23.5 6.5 6.5" />
           </svg>
-        </button>
+          <h1>Identity Inspector</h1>
+        </div>
+        <div className="bar">
+          <p>
+            Diagnostics for OIDC, SAML SSO, and SCIM that say what was verified and what was only
+            read.
+          </p>
+          <button
+            type="button"
+            className="theme"
+            aria-pressed={dark}
+            aria-label="Dark theme"
+            title={dark ? 'Switch to light theme' : 'Switch to dark theme'}
+            onClick={toggleTheme}
+          >
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              {dark ? (
+                <>
+                  <circle cx="12" cy="12" r="4" />
+                  <path d="M12 3v2M12 19v2M3 12h2M19 12h2M5.6 5.6l1.4 1.4M17 17l1.4 1.4M5.6 18.4 7 17M17 7l1.4-1.4" />
+                </>
+              ) : (
+                <path d="M20 14.5A8 8 0 0 1 9.5 4a8 8 0 1 0 10.5 10.5z" />
+              )}
+            </svg>
+          </button>
+        </div>
       </header>
 
       <form className="target" onSubmit={submit}>
@@ -255,7 +268,12 @@ export function App() {
             />
           </label>
           <button type="submit" disabled={!input.trim() || status.state === 'loading'}>
-            {status.state === 'loading' ? 'Inspecting…' : 'Inspect'}
+            <span className="ico" aria-hidden="true">
+              <svg viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M17.25 8.25 21 12m0 0-3.75 3.75M21 12H3" />
+              </svg>
+            </span>
+            <span>{status.state === 'loading' ? 'Inspecting…' : 'Inspect'}</span>
           </button>
         </div>
         <p className="trust">
