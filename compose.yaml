@@ -1,0 +1,14 @@
+# A local identity provider for end-to-end tests: pnpm e2e:up
+services:
+  keycloak:
+    image: quay.io/keycloak/keycloak:26.3
+    command: start-dev
+    ports:
+      - "8089:8080"
+    environment:
+      KC_BOOTSTRAP_ADMIN_USERNAME: admin
+      KC_BOOTSTRAP_ADMIN_PASSWORD: admin
+    healthcheck:
+      test: ["CMD-SHELL", "exec 3<>/dev/tcp/127.0.0.1/8080"]
+      interval: 3s
+      retries: 40

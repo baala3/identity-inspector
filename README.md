@@ -26,10 +26,20 @@ The protocol is detected from the target; pass `--protocol` to skip detection.
 The command exits 1 when a finding reaches `--fail-on` (default `error`), so it can gate CI.
 `--at <ISO date>` judges time-bounded evidence as of another instant, for example the moment an incident happened.
 
+## Web interface
+
+```sh
+pnpm dev
+```
+
+URLs are fetched through a proxy that accepts a URL and nothing else, and refuses anything that is not a public host.
+Pasted XML is parsed in the browser and is never sent.
+Set `IDI_ALLOW_PRIVATE=1` to let the local proxy reach a target on your own machine.
+
 ## Status
 
-Milestone 1 is in progress: static inspection of published documents for all three protocols, in the CLI.
-The web interface, the proxy, pasted tokens and assertions, signature verification, probes, and live flows are not built yet.
+Milestone 1: static inspection of published documents for all three protocols, in the CLI and the web interface.
+Pasted tokens and assertions, signature verification, probes, and live flows are not built yet, and the hosted deployment is not live.
 
 ## Layout
 
@@ -37,12 +47,17 @@ The web interface, the proxy, pasted tokens and assertions, signature verificati
 - `docs/adr/` - decisions that would otherwise look odd
 - `packages/core` - the engine: evidence collection, checks, reports
 - `packages/cli` - the `idi` command
+- `packages/proxy` - the public-document fetcher, deployable as a Cloudflare Worker
+- `packages/web` - the web interface
 
 ## Develop
 
 ```sh
-pnpm test
 pnpm lint
+pnpm typecheck
+pnpm test
+pnpm e2e:up   # starts Keycloak in Docker
+pnpm e2e
 ```
 
 Check identifiers are a public contract and are never renamed (see `docs/adr/0003-stable-check-ids.md`).
