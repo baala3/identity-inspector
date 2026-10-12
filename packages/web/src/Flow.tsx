@@ -105,7 +105,7 @@ export function Flow({ steps, findings, selected, onSelect }: Props) {
               {about.length > 0 && ` · ${about.length} finding${about.length === 1 ? '' : 's'}`}
             </text>
             {worst && worst !== 'pass' && (
-              <circle className={`dot ${worst}`} cx={width - 14} cy={y - 2} r={5} />
+              <circle className={`dot ${worst}`} cx={width - 20} cy={y - 2} r={5} />
             )}
           </g>
         );

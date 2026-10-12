@@ -1,6 +1,6 @@
 /*
-  Warm paper ground, ink pills, layered soft shadows, and one dark glass panel
-  for the flow. Colours and shadows are tokens; dark mode redefines the tokens.
+  Warm paper ground, ink pills, and layered soft shadows.
+  Colours and shadows are tokens; the dark theme redefines the tokens.
 */
 :root {
   --bg: #efede8;
@@ -34,9 +34,6 @@
   --shadow-pill:
     0 12px 22px -8px rgba(0, 0, 0, 0.4), 0 4px 8px -2px rgba(0, 0, 0, 0.18),
     inset 0 1px 0 rgba(255, 255, 255, 0.12), inset 0 -2px 4px rgba(0, 0, 0, 0.4);
-  --shadow-dark:
-    0 40px 80px -30px rgba(20, 12, 0, 0.45), 0 16px 32px -12px rgba(20, 12, 0, 0.25),
-    inset 0 1px 0 rgba(255, 255, 255, 0.08), inset 0 -3px 8px rgba(0, 0, 0, 0.5);
   --shadow-well: inset 0 2px 5px rgba(40, 30, 10, 0.12), inset 0 -1px 0 rgba(255, 255, 255, 0.6);
   --card-border: transparent;
   --ease: cubic-bezier(0.6, 0, 0.2, 1);
@@ -600,28 +597,11 @@ aside {
   box-shadow: var(--shadow-soft);
 }
 
-/*
-  The flow sits on dark glass in both themes. Redefining the tokens here
-  recolours the diagram, the legend, and the tags inside it together.
-*/
-aside .card:first-child {
-  --text: #f4f0eb;
-  --muted: rgba(244, 240, 235, 0.62);
-  --border: rgba(191, 213, 143, 0.22);
-  --sunken: rgba(191, 213, 143, 0.1);
-  --accent: #d7f08c;
-  --error: #ff8f84;
-  --warn: #f0c060;
-  --info: #9fd2e8;
-  --discovered: #9fd2e8;
-  --user-supplied: #c7a6f7;
-  --executed: #bfd58f;
-  --illustrative: rgba(244, 240, 235, 0.62);
+/* In the dark theme the flow card picks up a faint green glow. */
+:root[data-theme="dark"] aside .card:first-child {
   background:
-    radial-gradient(70% 45% at 50% 28%, rgba(191, 213, 143, 0.13), transparent 70%), #0d0d10;
+    radial-gradient(70% 45% at 50% 28%, rgba(191, 213, 143, 0.13), transparent 70%), var(--surface);
   border-color: rgba(191, 213, 143, 0.3);
-  box-shadow: var(--shadow-dark);
-  color: var(--text);
 }
 
 .card .legend {
