@@ -1,0 +1,15 @@
+{
+  "name": "@identity-inspector/proxy",
+  "version": "0.0.0",
+  "type": "module",
+  "license": "Apache-2.0",
+  "exports": {
+    ".": {
+      "types": "./dist/handler.d.ts",
+      "default": "./dist/handler.js"
+    }
+  },
+  "scripts": {
+    "deploy": "wrangler deploy"
+  }
+}

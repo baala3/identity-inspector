@@ -1,0 +1,8 @@
+name = "identity-inspector-proxy"
+main = "src/worker.ts"
+compatibility_date = "2026-09-01"
+
+[[ratelimits]]
+name = "RATE_LIMITER"
+namespace_id = "1001"
+simple = { limit = 60, period = 60 }
