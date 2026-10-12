@@ -3,6 +3,7 @@ import { samlChecks } from './checks/saml.js';
 import { scimChecks } from './checks/scim.js';
 import { flowFor } from './flow.js';
 import type { Check, Finding, Report, Severity, Workspace } from './model.js';
+import { overviewFor } from './overview.js';
 
 export const checks: readonly Check[] = [...oidcChecks, ...samlChecks, ...scimChecks];
 
@@ -42,6 +43,7 @@ export function evaluate(workspace: Workspace, instant: Date = new Date()): Repo
     evidence: workspace.evidence.map(({ raw, ...rest }) => ({ ...rest, bytes: raw.length })),
     findings,
     flow: flowFor(workspace),
+    overview: overviewFor(workspace),
     summary,
   };
 }

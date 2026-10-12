@@ -597,6 +597,78 @@ aside {
 
 /* Findings */
 
+.tabs {
+  display: flex;
+  gap: 4px;
+  margin-bottom: 14px;
+  border-bottom: 1px solid var(--border);
+}
+
+.tabs button {
+  padding: 8px 14px;
+  margin-bottom: -1px;
+  background: none;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  color: var(--muted);
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.tabs button[aria-selected="true"] {
+  border-bottom-color: var(--accent);
+  color: var(--text);
+}
+
+.tabs button span {
+  margin-left: 6px;
+  font-size: 12px;
+  font-weight: 400;
+  color: var(--muted);
+}
+
+.overview {
+  display: grid;
+  gap: 12px;
+}
+
+.overview dl > div {
+  display: grid;
+  grid-template-columns: 200px minmax(0, 1fr);
+  gap: 4px 16px;
+  padding: 8px 0;
+  border-top: 1px solid var(--border);
+}
+
+.overview dt {
+  color: var(--muted);
+  font-size: 13px;
+  overflow-wrap: anywhere;
+}
+
+.overview dd {
+  overflow-wrap: anywhere;
+}
+
+.overview .values {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.overview .values code {
+  display: block;
+  padding: 1px 7px;
+  background: var(--sunken);
+  border-radius: 4px;
+}
+
+@media (max-width: 560px) {
+  .overview dl > div {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
 .findings {
   min-width: 0;
 }

@@ -115,3 +115,18 @@ test('the CLI reaches the same verdicts and fails the build on errors', async ()
       .severity,
   ).toBe('error');
 });
+
+test('restates what the target publishes on its own tab, without verdicts', async ({ page }) => {
+  await inspect(page, REALM);
+  await page.getByRole('tab', { name: 'What it publishes' }).click();
+
+  const overview = page.locator('.overview');
+  await expect(overview.getByText('Token', { exact: true })).toBeVisible();
+  await expect(overview).toContainText(`${REALM}/protocol/openid-connect/token`);
+  await expect(overview).toContainText('S256');
+  await expect(page.locator('.finding')).toHaveCount(0);
+  await expect(page.locator('.filters')).toHaveCount(0);
+
+  await page.getByRole('tab', { name: /Findings/ }).click();
+  await expect(page.locator('.finding').first()).toBeVisible();
+});

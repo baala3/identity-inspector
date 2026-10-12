@@ -1,5 +1,6 @@
 import {
   type Finding,
+  type OverviewSection,
   type Protocol,
   type Provenance,
   type Report,
@@ -17,6 +18,8 @@ const PROXY = import.meta.env.VITE_PROXY_URL ?? '/api';
 const EXAMPLES = [
   ['OIDC', 'accounts.google.com'],
   ['OIDC', 'https://login.microsoftonline.com/common/v2.0'],
+  ['OIDC', 'appleid.apple.com'],
+  ['OIDC', 'gitlab.com'],
   ['SAML', 'https://mocksaml.com/api/saml/metadata'],
 ] as const;
 
@@ -102,6 +105,7 @@ export function App() {
   const [result, setResult] = useState<Result>();
   const [shown, setShown] = useState<Set<Severity>>(new Set(SEVERITIES));
   const [step, setStep] = useState<string>();
+  const [view, setView] = useState<'findings' | 'overview'>('findings');
   const worker = useRef<Worker>(undefined);
   const latest = useRef(0);
 
@@ -343,30 +347,51 @@ export function App() {
             </aside>
 
             <section className="findings">
-              <div className="filters">
-                {SEVERITIES.map((severity) => (
-                  <label key={severity} className={`chip ${severity}`}>
-                    <input
-                      type="checkbox"
-                      checked={shown.has(severity)}
-                      onChange={() => {
-                        const next = new Set(shown);
-                        if (!next.delete(severity)) next.add(severity);
-                        setShown(next);
-                      }}
-                    />
-                    <span>
-                      <b>{report.summary[severity]}</b> {severity}
-                    </span>
-                  </label>
-                ))}
-                {selected && (
-                  <button type="button" className="clear" onClick={() => setStep(undefined)}>
-                    Step {report.flow.indexOf(selected) + 1} only · clear
-                  </button>
-                )}
+              <div className="tabs" role="tablist">
+                <button
+                  type="button"
+                  role="tab"
+                  aria-selected={view === 'findings'}
+                  onClick={() => setView('findings')}
+                >
+                  Findings <span>{report.findings.length - report.summary.pass} to review</span>
+                </button>
+                <button
+                  type="button"
+                  role="tab"
+                  aria-selected={view === 'overview'}
+                  onClick={() => setView('overview')}
+                >
+                  What it publishes
+                </button>
               </div>
-              {visible.length ? (
+              {view === 'overview' && <Overview sections={report.overview} />}
+              {view === 'findings' && (
+                <div className="filters">
+                  {SEVERITIES.map((severity) => (
+                    <label key={severity} className={`chip ${severity}`}>
+                      <input
+                        type="checkbox"
+                        checked={shown.has(severity)}
+                        onChange={() => {
+                          const next = new Set(shown);
+                          if (!next.delete(severity)) next.add(severity);
+                          setShown(next);
+                        }}
+                      />
+                      <span>
+                        <b>{report.summary[severity]}</b> {severity}
+                      </span>
+                    </label>
+                  ))}
+                  {selected && (
+                    <button type="button" className="clear" onClick={() => setStep(undefined)}>
+                      Step {report.flow.indexOf(selected) + 1} only · clear
+                    </button>
+                  )}
+                </div>
+              )}
+              {view !== 'findings' ? null : visible.length ? (
                 <ul>
                   {visible.map((finding, index) => (
                     // biome-ignore lint/suspicious/noArrayIndexKey: a check may emit several findings and the list is never reordered in place
@@ -385,6 +410,48 @@ export function App() {
         This inspection reads published documents only. It does not log in, exchange tokens, or
         verify signatures yet.
       </footer>
+    </div>
+  );
+}
+
+function Overview({ sections }: { sections: OverviewSection[] }) {
+  if (!sections.length) {
+    return (
+      <p className="muted none">Nothing readable was published, so there is nothing to show.</p>
+    );
+  }
+  return (
+    <div className="overview">
+      <p className="muted">
+        Restated from the evidence. These are the target's own claims, not tested behaviour.
+      </p>
+      {sections.map((section) => (
+        <section key={section.id} className="card">
+          <h2>{section.title}</h2>
+          <dl>
+            {section.facts.map((fact, index) => (
+              // biome-ignore lint/suspicious/noArrayIndexKey: labels repeat (several certificates share a subject) and the list is static
+              <div key={`${fact.label} ${index}`}>
+                <dt>{fact.label}</dt>
+                <dd>
+                  {fact.style === 'chips' ? (
+                    <ul className="values">
+                      {fact.values.map((value, position) => (
+                        // biome-ignore lint/suspicious/noArrayIndexKey: values may repeat and the list is static
+                        <li key={`${value} ${position}`}>
+                          <code>{value}</code>
+                        </li>
+                      ))}
+                    </ul>
+                  ) : (
+                    <code>{fact.values.join(', ')}</code>
+                  )}
+                </dd>
+              </div>
+            ))}
+          </dl>
+        </section>
+      ))}
     </div>
   );
 }

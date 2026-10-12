@@ -25,6 +25,7 @@ Options:
   --fail-on <error|warn|never>  Exit 1 at this severity or worse (default error)
   --at <ISO date>               Evaluation instant (default now)
   --all                         Also list passing checks in text output
+  --overview                    Also list what the target publishes in text output
 
 Environment:
   SCIM_TOKEN                    Bearer token sent to SCIM endpoints only
@@ -59,7 +60,7 @@ const COLOR: Record<Severity, Parameters<typeof styleText>[0]> = {
   pass: 'green',
 };
 
-function toText(report: Report, all: boolean): string {
+function toText(report: Report, all: boolean, overview: boolean): string {
   const out = [
     styleText('bold', `${report.target.protocol.toUpperCase()} ${report.target.input}`),
     styleText('dim', `evaluated at ${report.instant}`),
@@ -76,6 +77,15 @@ function toText(report: Report, all: boolean): string {
       out.push(`      ${styleText('dim', `${roleLabel(role)}:`)} ${text}`);
     }
     out.push(styleText('dim', `      ${finding.citation.label}`), '');
+  }
+  if (overview) {
+    for (const section of report.overview) {
+      out.push(styleText('bold', section.title));
+      for (const fact of section.facts) {
+        out.push(`  ${styleText('dim', `${fact.label}:`)} ${fact.values.join(', ')}`);
+      }
+      out.push('');
+    }
   }
   out.push(styleText('bold', 'Flow'));
   for (const step of report.flow) {
@@ -98,6 +108,7 @@ async function main(): Promise<number> {
       'fail-on': { type: 'string', default: 'error' },
       at: { type: 'string' },
       all: { type: 'boolean', default: false },
+      overview: { type: 'boolean', default: false },
       help: { type: 'boolean', short: 'h', default: false },
     },
   });
@@ -129,7 +140,7 @@ async function main(): Promise<number> {
       ? JSON.stringify(report, null, 2)
       : values.format === 'md'
         ? toMarkdown(report)
-        : toText(report, values.all);
+        : toText(report, values.all, values.overview);
   process.stdout.write(`${rendered}\n`);
 
   const failed =

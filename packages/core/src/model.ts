@@ -107,11 +107,25 @@ export interface FlowStep {
   concerns: string[];
 }
 
+export interface Fact {
+  label: string;
+  values: string[];
+  style: 'text' | 'link' | 'chips';
+}
+
+export interface OverviewSection {
+  id: string;
+  title: string;
+  facts: Fact[];
+}
+
 export interface Report {
   target: Target;
   instant: string;
   evidence: Array<Omit<Evidence, 'raw'> & { bytes: number }>;
   findings: Finding[];
   flow: FlowStep[];
+  /** What the evidence states, with no verdict attached. */
+  overview: OverviewSection[];
   summary: Record<Severity, number>;
 }

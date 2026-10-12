@@ -524,3 +524,53 @@ describe('report', () => {
     expect(report.flow.find((s) => s.id === 'token')?.endpoint).toBe('https://op.example/token');
   });
 });
+
+describe('overview', () => {
+  const facts = (workspace: Workspace) =>
+    Object.fromEntries(
+      evaluate(workspace, NOW).overview.flatMap((s) =>
+        s.facts.map((f) => [`${s.id}/${f.label}`, f.values]),
+      ),
+    );
+
+  it('restates what an OpenID Provider publishes', () => {
+    expect(facts(oidc())).toMatchObject({
+      'identity/Issuer': ['https://op.example'],
+      'endpoints/Token': ['https://op.example/token'],
+      'capabilities/Scopes': ['openid', 'email'],
+      'security/PKCE methods': ['S256'],
+      'keys/a': ['RSA', '2048 bits', 'use: sig'],
+    });
+  });
+
+  it('restates what SAML metadata publishes', () => {
+    expect(facts(saml())).toMatchObject({
+      'identity/Entity ID': ['https://idp.example/metadata'],
+      'identity/Roles': ['Identity Provider'],
+      'identity/NameID formats': ['emailAddress'],
+      'endpoints/SingleSignOnService (HTTP-Redirect)': ['https://idp.example/sso'],
+      'keys/idp.example': [
+        'signing',
+        'valid 2025-01-01 to 2030-01-01',
+        'RSA 2048 bits',
+        'sha256WithRSAEncryption',
+      ],
+    });
+  });
+
+  it('restates what a SCIM server publishes', () => {
+    expect(facts(scim())).toMatchObject({
+      'capabilities/PATCH': ['yes'],
+      'capabilities/Filtering': ['yes, maxResults 200'],
+      'endpoints/User at /Users': ['core:2.0:User', 'extension:enterprise:2.0:User'],
+      'schemas/core:2.0:User': ['userName'],
+    });
+  });
+
+  it('is empty rather than wrong when nothing could be read', () => {
+    expect(
+      evaluate(oidc({ discoveryStatus: 404, jwksStatus: 404 }), NOW).overview.map((s) => s.id),
+    ).not.toContain('endpoints');
+    expect(evaluate(pasted('<broken'), NOW).overview).toEqual([]);
+  });
+});

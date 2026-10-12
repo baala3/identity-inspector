@@ -78,6 +78,10 @@ _Avoid_: Reference, link, source
 What to change to resolve a finding, stated separately for each role that could act on it.
 _Avoid_: Fix, suggestion, advice
 
+**Overview**:
+What the evidence states about a target, restated with no verdict attached.
+_Avoid_: Summary, configuration, details
+
 **Flow step**:
 One message in a protocol exchange, carrying a provenance and the findings that concern it.
 _Avoid_: Arrow, hop, stage
