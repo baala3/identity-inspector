@@ -139,13 +139,13 @@ test('starts light whatever the system prefers, and remembers a switch to dark',
   const background = () => page.evaluate(() => getComputedStyle(document.body).backgroundColor);
 
   await page.goto('/');
-  expect(await background()).toBe('rgb(239, 237, 232)');
+  expect(await background()).toBe('rgb(0, 128, 128)');
 
   await page.getByRole('button', { name: 'Dark theme' }).click();
-  expect(await background()).toBe('rgb(13, 13, 16)');
+  expect(await background()).toBe('rgb(6, 43, 43)');
 
   await page.reload();
-  expect(await background()).toBe('rgb(13, 13, 16)');
+  expect(await background()).toBe('rgb(6, 43, 43)');
   await expect(page.getByRole('button', { name: 'Dark theme' })).toHaveAttribute(
     'aria-pressed',
     'true',
