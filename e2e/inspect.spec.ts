@@ -164,3 +164,13 @@ test('lays the results out without a scroll area nested inside the page', async 
   );
   expect(nested).toBe(0);
 });
+
+test('returns to the empty home screen from the brand', async ({ page }) => {
+  await inspect(page, REALM);
+  await page.getByRole('link', { name: 'Identity Inspector home' }).click();
+
+  await expect(page.locator('.results')).toHaveCount(0);
+  await expect(page.getByLabel('Target')).toHaveValue('');
+  await expect(page.getByText('Try a public target')).toBeVisible();
+  expect(new URL(page.url()).search).toBe('');
+});

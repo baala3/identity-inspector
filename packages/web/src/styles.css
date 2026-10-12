@@ -214,6 +214,8 @@ footer::before {
 }
 
 .brand {
+  color: inherit;
+  text-decoration: none;
   position: relative;
   display: flex;
   align-items: center;

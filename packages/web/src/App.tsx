@@ -193,14 +193,14 @@ export function App() {
   return (
     <div className="page">
       <header className="masthead">
-        <div className="brand">
+        <a className="brand" href={import.meta.env.BASE_URL} aria-label="Identity Inspector home">
           <svg className="mark" viewBox="0 0 40 40" aria-hidden="true">
             <rect width="40" height="40" rx="9" />
             <circle cx="18" cy="18" r="7" />
             <path d="m23.5 23.5 6.5 6.5" />
           </svg>
           <h1>Identity Inspector</h1>
-        </div>
+        </a>
         <div className="bar">
           <p>
             Diagnostics for OIDC, SAML SSO, and SCIM that say what was verified and what was only
