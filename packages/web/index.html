@@ -4,6 +4,12 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="color-scheme" content="light dark" />
+    <script>
+      // Applied before first paint so a saved dark preference never flashes light.
+      try {
+        if (localStorage.getItem("theme") === "dark") document.documentElement.dataset.theme = "dark";
+      } catch {}
+    </script>
     <meta
       name="description"
       content="Diagnostics for OIDC, SAML SSO, and SCIM integrations that say what was verified and what was only read."

@@ -105,6 +105,7 @@ export function App() {
   const [result, setResult] = useState<Result>();
   const [shown, setShown] = useState<Set<Severity>>(new Set(SEVERITIES));
   const [step, setStep] = useState<string>();
+  const [dark, setDark] = useState(() => document.documentElement.dataset.theme === 'dark');
   const [view, setView] = useState<'findings' | 'overview'>('findings');
   const worker = useRef<Worker>(undefined);
   const latest = useRef(0);
@@ -161,6 +162,18 @@ export function App() {
     }
   }, [inspect, params]);
 
+  const toggleTheme = () => {
+    const next = !dark;
+    setDark(next);
+    if (next) document.documentElement.dataset.theme = 'dark';
+    else delete document.documentElement.dataset.theme;
+    try {
+      localStorage.setItem('theme', next ? 'dark' : 'light');
+    } catch {
+      // Storage can be unavailable; the choice then lasts for this visit only.
+    }
+  };
+
   const submit = (event: FormEvent) => {
     event.preventDefault();
     inspect(input, protocol, at);
@@ -181,6 +194,25 @@ export function App() {
           Diagnostics for OIDC, SAML SSO, and SCIM that say what was verified and what was only
           read.
         </p>
+        <button
+          type="button"
+          className="theme"
+          aria-pressed={dark}
+          aria-label="Dark theme"
+          title={dark ? 'Switch to light theme' : 'Switch to dark theme'}
+          onClick={toggleTheme}
+        >
+          <svg viewBox="0 0 24 24" aria-hidden="true">
+            {dark ? (
+              <>
+                <circle cx="12" cy="12" r="4" />
+                <path d="M12 3v2M12 19v2M3 12h2M19 12h2M5.6 5.6l1.4 1.4M17 17l1.4 1.4M5.6 18.4 7 17M17 7l1.4-1.4" />
+              </>
+            ) : (
+              <path d="M20 14.5A8 8 0 0 1 9.5 4a8 8 0 1 0 10.5 10.5z" />
+            )}
+          </svg>
+        </button>
       </header>
 
       <form className="target" onSubmit={submit}>

@@ -130,3 +130,37 @@ test('restates what the target publishes on its own tab, without verdicts', asyn
   await page.getByRole('tab', { name: /Findings/ }).click();
   await expect(page.locator('.finding').first()).toBeVisible();
 });
+
+test('starts light whatever the system prefers, and remembers a switch to dark', async ({
+  browser,
+}) => {
+  const context = await browser.newContext({ colorScheme: 'dark' });
+  const page = await context.newPage();
+  const background = () => page.evaluate(() => getComputedStyle(document.body).backgroundColor);
+
+  await page.goto('/');
+  expect(await background()).toBe('rgb(239, 237, 232)');
+
+  await page.getByRole('button', { name: 'Dark theme' }).click();
+  expect(await background()).toBe('rgb(13, 13, 16)');
+
+  await page.reload();
+  expect(await background()).toBe('rgb(13, 13, 16)');
+  await expect(page.getByRole('button', { name: 'Dark theme' })).toHaveAttribute(
+    'aria-pressed',
+    'true',
+  );
+  await context.close();
+});
+
+test('lays the results out without a scroll area nested inside the page', async ({ page }) => {
+  await inspect(page, REALM);
+  const nested = await page.evaluate(
+    () =>
+      [...document.querySelectorAll('.columns, .columns > *')].filter((el) => {
+        const { overflowY } = getComputedStyle(el);
+        return overflowY === 'auto' || overflowY === 'scroll';
+      }).length,
+  );
+  expect(nested).toBe(0);
+});
