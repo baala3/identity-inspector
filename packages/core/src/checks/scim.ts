@@ -51,10 +51,10 @@ export const scimChecks: Check[] = [
     id: 'scim.base.https',
     protocol: 'scim',
     category: 'security',
-    title: 'SCIM base URL uses https',
+    title: 'HTTPS on the base URL',
     citation: PROTOCOL('7.1'),
     remediation: {
-      'scim-server': 'Serve SCIM only over TLS; bearer tokens travel on every request.',
+      'scim-server': 'Serve SCIM over https only. Every request carries a bearer token.',
     },
     run: (ctx) =>
       isHttps(ctx.workspace.target.input)
@@ -65,7 +65,7 @@ export const scimChecks: Check[] = [
     id: 'scim.discovery.reachable',
     protocol: 'scim',
     category: 'conformance',
-    title: 'Discovery endpoints respond',
+    title: 'Discovery endpoints',
     citation: PROTOCOL('4'),
     remediation: {
       'scim-server':
@@ -88,7 +88,7 @@ export const scimChecks: Check[] = [
         if (status === 401 || status === 403) {
           return {
             severity: 'info',
-            detail: `${path(evidence)} requires authentication (HTTP ${status}), so its content was not inspected. Supply a token to the CLI to go further.`,
+            detail: `${path(evidence)} requires authentication (HTTP ${status}), so its content was not inspected. Run the CLI with SCIM_TOKEN set to check it.`,
             evidence,
           };
         }
@@ -103,7 +103,7 @@ export const scimChecks: Check[] = [
     id: 'scim.discovery.content-type',
     protocol: 'scim',
     category: 'conformance',
-    title: 'Responses are served as application/scim+json',
+    title: 'Response content type',
     citation: PROTOCOL('3.8'),
     remediation: {
       'scim-server': 'Return Content-Type: application/scim+json on every SCIM response.',
@@ -131,7 +131,7 @@ export const scimChecks: Check[] = [
     id: 'scim.error.shape',
     protocol: 'scim',
     category: 'conformance',
-    title: 'Refusals use the SCIM error format',
+    title: 'Error format',
     citation: PROTOCOL('3.12'),
     remediation: {
       'scim-server': `Return a JSON body with schemas ["${ERROR}"] and a string "status" on every error, including 401.`,
@@ -143,7 +143,7 @@ export const scimChecks: Check[] = [
       return bad.length
         ? {
             severity: 'warn',
-            detail: `${bad.map((e) => `${path(e)} (HTTP ${e.fetch?.status})`).join(', ')} did not return a SCIM Error body. Provisioning clients surface these as opaque failures.`,
+            detail: `${bad.map((e) => `${path(e)} (HTTP ${e.fetch?.status})`).join(', ')} did not return a SCIM-format error body. Entra ID, Okta, and similar clients then show a generic failure with no reason.`,
             evidence: bad[0] as Evidence,
           }
         : {
@@ -157,7 +157,7 @@ export const scimChecks: Check[] = [
     id: 'scim.config.schema',
     protocol: 'scim',
     category: 'conformance',
-    title: 'ServiceProviderConfig declares its schema and required attributes',
+    title: 'ServiceProviderConfig fields',
     citation: SCHEMA('5'),
     remediation: {
       'scim-server':
@@ -190,7 +190,7 @@ export const scimChecks: Check[] = [
     id: 'scim.config.patch',
     protocol: 'scim',
     category: 'interop',
-    title: 'PATCH is supported',
+    title: 'PATCH support',
     citation: PROTOCOL('3.5.2'),
     remediation: {
       'scim-server':
@@ -207,7 +207,7 @@ export const scimChecks: Check[] = [
         : {
             severity: 'error',
             detail:
-              'patch.supported is not true. Entra ID provisioning cannot update or deactivate users without PATCH.',
+              'The server says it does not support PATCH. Entra ID uses PATCH for every update and for deactivating users, so it cannot work with this server.',
             evidence,
             pointer: '/patch/supported',
           },
@@ -217,7 +217,7 @@ export const scimChecks: Check[] = [
     id: 'scim.config.filter',
     protocol: 'scim',
     category: 'interop',
-    title: 'Filtering is supported',
+    title: 'Filter support',
     citation: PROTOCOL('3.4.2.2'),
     remediation: {
       'scim-server':
@@ -229,7 +229,7 @@ export const scimChecks: Check[] = [
         return {
           severity: 'error',
           detail:
-            'filter.supported is not true. Directory clients match existing accounts with a userName filter, so every sync would create duplicates or fail.',
+            'The server says it does not support filtering. Entra ID and Okta search for an existing user by userName before creating one, so without filtering each sync creates duplicates or fails.',
           evidence,
           pointer,
         };
@@ -247,7 +247,7 @@ export const scimChecks: Check[] = [
     id: 'scim.config.auth-schemes',
     protocol: 'scim',
     category: 'conformance',
-    title: 'Authentication schemes are declared',
+    title: 'Authentication methods',
     citation: SCHEMA('5'),
     remediation: {
       'scim-server':
@@ -266,7 +266,8 @@ export const scimChecks: Check[] = [
           }
         : {
             severity: 'warn',
-            detail: 'authenticationSchemes is empty, so clients cannot tell how to authenticate.',
+            detail:
+              'The server lists no authentication methods, so a client cannot tell how to log in.',
             evidence,
             pointer: '/authenticationSchemes',
           };
@@ -276,7 +277,7 @@ export const scimChecks: Check[] = [
     id: 'scim.config.features',
     protocol: 'scim',
     category: 'interop',
-    title: 'Optional feature support',
+    title: 'Optional features',
     citation: SCHEMA('5'),
     run: onConfig((doc, evidence) => {
       const features = ['bulk', 'sort', 'etag', 'changePassword'].map(
@@ -284,7 +285,7 @@ export const scimChecks: Check[] = [
       );
       return {
         severity: 'info',
-        detail: `Advertised: ${features.join(', ')}. These are claims read from the document, not tested behaviour.`,
+        detail: `Advertised: ${features.join(', ')}. This is what the server claims, not something this tool tested.`,
         evidence,
       };
     }),
@@ -293,7 +294,7 @@ export const scimChecks: Check[] = [
     id: 'scim.resource-types.user',
     protocol: 'scim',
     category: 'conformance',
-    title: 'A User resource type is published',
+    title: 'User resource type',
     citation: SCHEMA('6'),
     remediation: {
       'scim-server': `Publish a resource type with schema ${CORE}User and endpoint /Users.`,
@@ -322,7 +323,7 @@ export const scimChecks: Check[] = [
     id: 'scim.schemas.referenced',
     protocol: 'scim',
     category: 'conformance',
-    title: 'Every schema a resource type references is published',
+    title: 'Schemas used by resource types',
     citation: SCHEMA('7'),
     remediation: {
       'scim-server': 'Serve each referenced schema, including extensions, from /Schemas.',
@@ -354,7 +355,7 @@ export const scimChecks: Check[] = [
     id: 'scim.schemas.user-name',
     protocol: 'scim',
     category: 'conformance',
-    title: 'User schema defines userName as required and unique',
+    title: 'userName rules',
     citation: SCHEMA('4.1.1'),
     remediation: { 'scim-server': 'Declare userName with required true and uniqueness "server".' },
     run: (ctx) => {
@@ -382,11 +383,11 @@ export const scimChecks: Check[] = [
     id: 'scim.schemas.enterprise-extension',
     protocol: 'scim',
     category: 'interop',
-    title: 'Enterprise User extension availability',
+    title: 'Enterprise User extension',
     citation: SCHEMA('4.3'),
     remediation: {
       'scim-server':
-        'Accept the enterprise extension even if most of it is ignored; default Entra ID and Okta mappings send department and manager through it.',
+        'Accept the enterprise extension even if you ignore most of it. Entra ID and Okta send department and manager through it by default.',
     },
     run: (ctx) => {
       const evidence = find(ctx, 'scim.schemas');
@@ -396,7 +397,7 @@ export const scimChecks: Check[] = [
         severity: 'info',
         detail: present
           ? 'The enterprise User extension is published.'
-          : 'The enterprise User extension is not published. Default directory mappings that send manager or department will need to be removed on the client side.',
+          : 'The enterprise User extension is not published. Entra ID and Okta send manager and department through it by default, so either accept the extension or remove those mappings on their side.',
         evidence,
       };
     },

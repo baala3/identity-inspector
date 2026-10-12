@@ -92,7 +92,7 @@ export const samlChecks: Check[] = [
     id: 'saml.metadata.reachable',
     protocol: 'saml',
     category: 'conformance',
-    title: 'Metadata document is retrievable',
+    title: 'Metadata URL',
     citation: METADATA('4.1'),
     remediation: {
       idp: 'Publish metadata at a stable, unauthenticated URL.',
@@ -115,7 +115,7 @@ export const samlChecks: Check[] = [
     id: 'saml.metadata.well-formed',
     protocol: 'saml',
     category: 'conformance',
-    title: 'Metadata is well-formed XML with a metadata root',
+    title: 'Metadata XML',
     citation: METADATA('2.3'),
     remediation: {
       idp: 'Publish an EntityDescriptor or EntitiesDescriptor in the SAML metadata namespace.',
@@ -151,7 +151,7 @@ export const samlChecks: Check[] = [
     id: 'saml.metadata.entity-id',
     protocol: 'saml',
     category: 'conformance',
-    title: 'entityID is present and at most 1024 characters',
+    title: 'Entity ID',
     citation: METADATA('2.3.2'),
     remediation: { idp: 'Set a stable URI as entityID.', sp: 'Set a stable URI as entityID.' },
     run: onEntity(({ evidence, entity }) => {
@@ -174,7 +174,7 @@ export const samlChecks: Check[] = [
       if (/[{}]/.test(id)) {
         return {
           severity: 'warn',
-          detail: `entityID is the template ${id}. This is multi-tenant metadata; the Issuer in real assertions carries a tenant-specific value, so configure the SP from the tenant's own metadata.`,
+          detail: `The entityID is ${id}, which contains a placeholder (a template). This is shared multi-tenant metadata. Real responses carry a tenant-specific Issuer, so set up your SP from the metadata of your own tenant.`,
           evidence,
           pointer,
         };
@@ -183,7 +183,7 @@ export const samlChecks: Check[] = [
         ? {
             severity: 'warn',
             detail:
-              'entityID has leading or trailing whitespace, which breaks exact-match comparison.',
+              'The entityID has a space at the start or end. Entity IDs are compared exactly, so this will cause mismatches.',
             evidence,
             pointer,
           }
@@ -194,7 +194,7 @@ export const samlChecks: Check[] = [
     id: 'saml.metadata.sso-role',
     protocol: 'saml',
     category: 'conformance',
-    title: 'Entity declares an SSO role',
+    title: 'IdP or SP role',
     citation: METADATA('2.4'),
     remediation: { idp: 'Include an IDPSSODescriptor.', sp: 'Include an SPSSODescriptor.' },
     run: onEntity((s) => {
@@ -212,7 +212,7 @@ export const samlChecks: Check[] = [
     id: 'saml.metadata.protocol-support',
     protocol: 'saml',
     category: 'conformance',
-    title: 'Roles declare SAML 2.0 protocol support',
+    title: 'SAML 2.0 support',
     citation: METADATA('2.4.1'),
     remediation: { idp: `Set protocolSupportEnumeration to include ${SAML2_PROTOCOL}.` },
     run: onEntity((s) => {
@@ -242,11 +242,11 @@ export const samlChecks: Check[] = [
     id: 'saml.metadata.valid-until',
     protocol: 'saml',
     category: 'conformance',
-    title: 'Metadata has not passed its validUntil',
+    title: 'Metadata expiry',
     citation: METADATA('2.3.2'),
     remediation: {
       idp: 'Republish metadata with a later validUntil.',
-      sp: 'Refresh the stored metadata; consumers must not use expired metadata.',
+      sp: 'Download the metadata again. Expired metadata must not be used.',
     },
     run: onEntity(({ evidence, entity }, ctx) => {
       const value =
@@ -281,10 +281,10 @@ export const samlChecks: Check[] = [
     id: 'saml.metadata.signed',
     protocol: 'saml',
     category: 'security',
-    title: 'Metadata carries a signature',
+    title: 'Metadata signature',
     citation: METADATA('3'),
     remediation: {
-      sp: 'Unsigned metadata is trusted only as far as the channel it arrived over; fetch it over TLS from the IdP itself and pin the certificate out of band.',
+      sp: 'Only trust unsigned metadata that you fetched over https from the IdP itself, and confirm the certificate with the IdP admin through another channel.',
     },
     run: onEntity(({ evidence, entity }) => {
       const signed =
@@ -293,8 +293,8 @@ export const samlChecks: Check[] = [
       return {
         severity: 'info',
         detail: signed
-          ? 'A ds:Signature is present. It has not been verified.'
-          : 'The metadata is unsigned, which is common and acceptable when it is retrieved over TLS from the entity itself.',
+          ? 'The metadata has a signature. It has not been verified by this tool.'
+          : 'The metadata is unsigned. That is common, and fine as long as you download it over https directly from its owner.',
         evidence,
       };
     }),
@@ -303,7 +303,7 @@ export const samlChecks: Check[] = [
     id: 'saml.metadata.endpoints-https',
     protocol: 'saml',
     category: 'security',
-    title: 'Every endpoint location uses https',
+    title: 'HTTPS on endpoints',
     citation: METADATA('2.2.2'),
     remediation: { idp: 'Serve every endpoint over TLS.', sp: 'Serve every endpoint over TLS.' },
     run: onEntity(({ evidence, entity }) => {
@@ -327,7 +327,7 @@ export const samlChecks: Check[] = [
     id: 'saml.idp.sso-service',
     protocol: 'saml',
     category: 'conformance',
-    title: 'IdP publishes a usable SingleSignOnService',
+    title: 'Sign-in endpoint',
     citation: METADATA('2.4.3'),
     remediation: {
       idp: 'Publish a SingleSignOnService with the HTTP-Redirect or HTTP-POST binding.',
@@ -347,7 +347,7 @@ export const samlChecks: Check[] = [
         ? { severity: 'pass', detail: `SSO bindings: ${bindings.join(', ')}.`, evidence }
         : {
             severity: 'warn',
-            detail: `SSO bindings are [${bindings.join(', ')}]; neither front-channel binding that browsers SSO relies on is offered.`,
+            detail: `The IdP offers only [${bindings.join(', ')}] for sign-in. Browser sign-in needs HTTP-Redirect or HTTP-POST, and neither is offered.`,
             evidence,
           };
     }),
@@ -356,7 +356,7 @@ export const samlChecks: Check[] = [
     id: 'saml.idp.signing-key',
     protocol: 'saml',
     category: 'conformance',
-    title: 'IdP publishes a signing certificate',
+    title: 'Signing certificate',
     citation: METADATA('2.4.1.1'),
     remediation: {
       idp: 'Publish a KeyDescriptor with use="signing" holding the assertion signing certificate.',
@@ -374,7 +374,8 @@ export const samlChecks: Check[] = [
           }
         : {
             severity: 'error',
-            detail: 'No signing certificate is published, so no assertion can be verified.',
+            detail:
+              'No signing certificate is published, so an SP has nothing to verify responses against.',
             evidence: s.evidence,
           };
     }),
@@ -383,10 +384,10 @@ export const samlChecks: Check[] = [
     id: 'saml.idp.signing-key-rollover',
     protocol: 'saml',
     category: 'interop',
-    title: 'IdP signing certificate rollover state',
+    title: 'Signing certificate rotation',
     citation: METADATA('2.4.1.1'),
     remediation: {
-      sp: 'Store and accept every published signing certificate, not only the first, so a rotation does not cause an outage.',
+      sp: 'Save and accept every published signing certificate, not only the first. Otherwise sign-in breaks the day the IdP switches.',
     },
     run: onEntity((s) => {
       if (!s.idp) return undefined;
@@ -401,7 +402,7 @@ export const samlChecks: Check[] = [
         severity: 'info',
         detail:
           signing.length > 1
-            ? `${signing.length} signing certificates are published, which indicates a rotation in progress or staged: ${list}. Any of them may sign.`
+            ? `${signing.length} signing certificates are published, which usually means the IdP is rotating to a new one: ${list}. The IdP may sign with any of them.`
             : `One signing certificate is published: ${list}.`,
         evidence: s.evidence,
       };
@@ -411,10 +412,10 @@ export const samlChecks: Check[] = [
     id: 'saml.idp.want-authn-requests-signed',
     protocol: 'saml',
     category: 'interop',
-    title: 'IdP requirement for signed AuthnRequests',
+    title: 'Signed sign-in requests',
     citation: METADATA('2.4.3'),
     remediation: {
-      sp: 'Sign AuthnRequests and give the IdP the SP signing certificate when this is true.',
+      sp: 'If signing is required, sign your AuthnRequests and give the IdP admin your SP signing certificate.',
     },
     run: onEntity(({ evidence, idp }) => {
       if (!idp) return undefined;
@@ -422,8 +423,8 @@ export const samlChecks: Check[] = [
       return {
         severity: 'info',
         detail: want
-          ? 'WantAuthnRequestsSigned is true: unsigned AuthnRequests will be rejected.'
-          : 'WantAuthnRequestsSigned is not true: unsigned AuthnRequests are accepted.',
+          ? 'The IdP requires signed sign-in requests (WantAuthnRequestsSigned is true). Unsigned AuthnRequests will be rejected.'
+          : 'The IdP does not require signed sign-in requests. Unsigned AuthnRequests are accepted.',
         evidence,
       };
     }),
@@ -432,7 +433,7 @@ export const samlChecks: Check[] = [
     id: 'saml.sp.acs',
     protocol: 'saml',
     category: 'conformance',
-    title: 'SP publishes a usable AssertionConsumerService',
+    title: 'Assertion Consumer Service (ACS)',
     citation: METADATA('2.4.4'),
     remediation: { sp: 'Publish an HTTP-POST AssertionConsumerService with a unique index.' },
     run: onEntity(({ evidence, sp }) => {
@@ -470,7 +471,7 @@ export const samlChecks: Check[] = [
     id: 'saml.sp.want-assertions-signed',
     protocol: 'saml',
     category: 'security',
-    title: 'SP asks for signed assertions',
+    title: 'Signed assertions',
     citation: METADATA('2.4.4'),
     remediation: {
       sp: 'Set WantAssertionsSigned="true" and reject any assertion without its own valid signature.',
@@ -482,7 +483,7 @@ export const samlChecks: Check[] = [
         : {
             severity: 'warn',
             detail:
-              'WantAssertionsSigned is not true, so IdPs may sign only the Response. Verifying the assertion itself is the stronger defence against signature wrapping.',
+              'The SP does not ask for the assertion itself to be signed, so an IdP may sign only the outer Response. Requiring a signature on the assertion gives stronger protection against tampering (signature wrapping attacks).',
             evidence,
           };
     }),
@@ -491,7 +492,7 @@ export const samlChecks: Check[] = [
     id: 'saml.cert.readable',
     protocol: 'saml',
     category: 'conformance',
-    title: 'Published certificates are parseable X.509',
+    title: 'Certificate format',
     citation: METADATA('2.4.1.1'),
     remediation: { idp: 'Publish base64 DER certificates in ds:X509Certificate.' },
     run: onEntity((s) => {
@@ -515,11 +516,11 @@ export const samlChecks: Check[] = [
     id: 'saml.cert.validity',
     protocol: 'saml',
     category: 'interop',
-    title: 'Certificates are within their validity period',
+    title: 'Certificate expiry',
     citation: METADATA('2.4.1.1'),
     remediation: {
-      idp: 'Rotate the certificate and publish the replacement before removing the old one.',
-      sp: 'Many SP stacks reject assertions signed with an expired certificate even though SAML itself does not require the check; confirm how yours behaves.',
+      idp: 'Issue a new certificate and publish it next to the old one before removing the old one.',
+      sp: 'SAML does not require checking certificate expiry, but many SP libraries reject expired certificates anyway. Check what yours does.',
     },
     run: onEntity((s, ctx) => {
       const certs = keys(s).filter((k) => k.cert);
@@ -561,7 +562,7 @@ export const samlChecks: Check[] = [
     id: 'saml.cert.key-strength',
     protocol: 'saml',
     category: 'security',
-    title: 'Certificate keys are at least 2048-bit RSA or elliptic curve',
+    title: 'Certificate key size',
     citation: {
       label: 'NIST SP 800-131A Rev. 2, section 3',
       url: 'https://csrc.nist.gov/pubs/sp/800/131/a/r2/final',
@@ -588,10 +589,10 @@ export const samlChecks: Check[] = [
     id: 'saml.metadata.nameid-formats',
     protocol: 'saml',
     category: 'interop',
-    title: 'Advertised NameID formats',
+    title: 'NameID formats',
     citation: METADATA('2.4.2'),
     remediation: {
-      sp: 'Do not key accounts on a transient NameID, and treat emailAddress as mutable; prefer a persistent identifier or an immutable attribute.',
+      sp: 'Do not use a transient NameID as the account key, and remember that email addresses change. Prefer a persistent ID or an attribute that never changes.',
     },
     run: onEntity((s) => {
       const formats = roles(s).flatMap(([, el]) =>
@@ -601,7 +602,7 @@ export const samlChecks: Check[] = [
         severity: 'info',
         detail: formats.length
           ? `NameID formats: ${formats.map((f) => f.split(':').pop()).join(', ')}.`
-          : 'No NameIDFormat is advertised, so the format is whatever is negotiated per request.',
+          : 'No NameIDFormat is advertised, so the format is decided per request.',
         evidence: s.evidence,
       };
     }),

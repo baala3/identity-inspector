@@ -103,7 +103,7 @@ export const oidcChecks: Check[] = [
     id: 'oidc.discovery.reachable',
     protocol: 'oidc',
     category: 'conformance',
-    title: 'Discovery document is retrievable',
+    title: 'Discovery document',
     citation: DISCOVERY_RESPONSE,
     remediation: {
       op: 'Serve the provider configuration at {issuer}/.well-known/openid-configuration with a 200.',
@@ -115,7 +115,7 @@ export const oidcChecks: Check[] = [
     id: 'oidc.discovery.content-type',
     protocol: 'oidc',
     category: 'conformance',
-    title: 'Discovery document is served as application/json',
+    title: 'Discovery document content type',
     citation: DISCOVERY_RESPONSE,
     remediation: { op: 'Set Content-Type: application/json on the discovery response.' },
     run: (ctx) => {
@@ -126,7 +126,7 @@ export const oidcChecks: Check[] = [
         ? { severity: 'pass', detail: `Content-Type is ${type}.`, evidence }
         : {
             severity: 'warn',
-            detail: `Content-Type is "${type || '(none)'}"; strict clients reject anything but application/json.`,
+            detail: `Content-Type is "${type || '(none)'}". It should be application/json, and strict clients reject anything else.`,
             evidence,
           };
     },
@@ -135,11 +135,11 @@ export const oidcChecks: Check[] = [
     id: 'oidc.discovery.issuer-match',
     protocol: 'oidc',
     category: 'conformance',
-    title: 'Advertised issuer matches the issuer used for discovery',
+    title: 'Issuer value',
     citation: DISCOVERY_VALIDATION,
     remediation: {
-      op: 'Return an issuer identical to the URL prefix the document is served from.',
-      rp: 'Configure the exact issuer string the provider returns, including any trailing slash.',
+      op: 'Return an issuer that is exactly the URL the discovery document sits under.',
+      rp: 'Copy the issuer exactly as the provider returns it, including any trailing slash.',
     },
     run: onDiscovery((doc, evidence, ctx) => {
       const asked = ctx.workspace.target.input;
@@ -157,7 +157,7 @@ export const oidcChecks: Check[] = [
       if (got === asked) {
         return {
           severity: 'pass',
-          detail: `issuer is exactly ${got}.`,
+          detail: `The issuer is ${got}, the same URL you entered.`,
           evidence,
           pointer: '/issuer',
         };
@@ -165,14 +165,14 @@ export const oidcChecks: Check[] = [
       if (got.replace(/\/$/, '') === asked.replace(/\/$/, '')) {
         return {
           severity: 'info',
-          detail: `issuer is ${got}, which differs from the inspected ${asked} only by a trailing slash. ID token "iss" will carry the advertised form, so clients must be configured with that exact string.`,
+          detail: `The provider calls itself ${got}. You entered ${asked}. The only difference is a trailing slash, but apps compare this value exactly, so configure your app with ${got}.`,
           evidence,
           pointer: '/issuer',
         };
       }
       return {
         severity: 'error',
-        detail: `issuer is ${got} but the document was retrieved for ${asked}. Clients that validate discovery will refuse this provider.`,
+        detail: `The provider calls itself ${got}, but this document was fetched for ${asked}. The two must be identical, so most OIDC libraries will refuse to use this provider.`,
         evidence,
         pointer: '/issuer',
       };
@@ -182,28 +182,33 @@ export const oidcChecks: Check[] = [
     id: 'oidc.discovery.issuer-templated',
     protocol: 'oidc',
     category: 'interop',
-    title: 'Issuer is a literal value, not a template',
+    title: 'Issuer placeholder',
     citation: DISCOVERY_VALIDATION,
     remediation: {
-      rp: 'Use the tenant-specific discovery URL, or substitute the tenant id from the token before comparing "iss".',
+      rp: 'Use the discovery URL for your own tenant. If you must use the shared one, fill in the tenant ID from the token before comparing issuers.',
     },
     run: onDiscovery((doc, evidence) => {
       if (typeof doc.issuer !== 'string') return undefined;
       return /[{}]/.test(doc.issuer)
         ? {
             severity: 'warn',
-            detail: `issuer is the template ${doc.issuer}. Multi-tenant endpoints (for example Entra ID "common" and "organizations") publish this; no token will ever carry it literally, so standard issuer validation fails.`,
+            detail: `The issuer is ${doc.issuer}, which contains a placeholder instead of a real value. Shared multi-tenant endpoints such as Entra ID "common" do this. Real tokens carry the actual tenant ID, so a normal issuer comparison fails.`,
             evidence,
             pointer: '/issuer',
           }
-        : { severity: 'pass', detail: 'issuer is a literal URL.', evidence, pointer: '/issuer' };
+        : {
+            severity: 'pass',
+            detail: 'The issuer is a real URL with no placeholder.',
+            evidence,
+            pointer: '/issuer',
+          };
     }),
   },
   {
     id: 'oidc.discovery.issuer-form',
     protocol: 'oidc',
     category: 'conformance',
-    title: 'Issuer is an https URL with no query or fragment',
+    title: 'Issuer URL format',
     citation: DISCOVERY,
     remediation: { op: 'Use an https issuer with no query string and no fragment.' },
     run: onDiscovery((doc, evidence) => {
@@ -227,13 +232,13 @@ export const oidcChecks: Check[] = [
       return faults.length
         ? {
             severity: 'error',
-            detail: `issuer is malformed: ${faults.join(', ')}.`,
+            detail: `The issuer URL is not valid: ${faults.join(', ')}.`,
             evidence,
             pointer: '/issuer',
           }
         : {
             severity: 'pass',
-            detail: 'issuer is https with no query or fragment.',
+            detail: 'The issuer is an https URL with no query string or fragment.',
             evidence,
             pointer: '/issuer',
           };
@@ -243,9 +248,9 @@ export const oidcChecks: Check[] = [
     id: 'oidc.discovery.required-metadata',
     protocol: 'oidc',
     category: 'conformance',
-    title: 'Required provider metadata is present',
+    title: 'Required fields',
     citation: DISCOVERY,
-    remediation: { op: 'Publish every REQUIRED metadata value.' },
+    remediation: { op: 'Add the missing fields to the discovery document.' },
     run: onDiscovery((doc, evidence) => {
       const required = [
         'issuer',
@@ -264,12 +269,12 @@ export const oidcChecks: Check[] = [
       return missing.length
         ? {
             severity: 'error',
-            detail: `Missing required metadata: ${missing.join(', ')}.`,
+            detail: `These required fields are missing: ${missing.join(', ')}.`,
             evidence,
           }
         : {
             severity: 'pass',
-            detail: `All ${required.length} required values are present.`,
+            detail: `All ${required.length} required fields are present.`,
             evidence,
           };
     }),
@@ -278,7 +283,7 @@ export const oidcChecks: Check[] = [
     id: 'oidc.discovery.endpoints-https',
     protocol: 'oidc',
     category: 'security',
-    title: 'Every advertised endpoint uses https',
+    title: 'HTTPS on endpoints',
     citation: DISCOVERY,
     remediation: { op: 'Serve every endpoint over TLS.' },
     run: onDiscovery((doc, evidence) => {
@@ -302,10 +307,10 @@ export const oidcChecks: Check[] = [
     id: 'oidc.discovery.endpoint-origins',
     protocol: 'oidc',
     category: 'interop',
-    title: 'Endpoints share the issuer origin',
+    title: 'Endpoint hosts',
     citation: DISCOVERY,
     remediation: {
-      rp: 'Allow-list every origin below in egress rules and CSP; a firewall that only permits the issuer host will break the flow.',
+      rp: 'If your network restricts outbound traffic, allow every host listed here, not only the issuer host.',
     },
     run: onDiscovery((doc, evidence) => {
       if (typeof doc.issuer !== 'string' || !URL.canParse(doc.issuer)) return undefined;
@@ -320,7 +325,7 @@ export const oidcChecks: Check[] = [
       return foreign.size
         ? {
             severity: 'info',
-            detail: `Some endpoints live off the issuer origin ${home}: ${[...foreign].join(', ')}.`,
+            detail: `Some endpoints are on a different host than the issuer (${home}): ${[...foreign].join(', ')}.`,
             evidence,
           }
         : { severity: 'pass', detail: `Every endpoint is on ${home}.`, evidence };
@@ -330,7 +335,7 @@ export const oidcChecks: Check[] = [
     id: 'oidc.discovery.code-flow',
     protocol: 'oidc',
     category: 'conformance',
-    title: 'Authorization code flow is offered',
+    title: 'Authorization code flow',
     citation: DISCOVERY,
     remediation: { op: 'Advertise "code" in response_types_supported.' },
     run: onDiscovery((doc, evidence) => {
@@ -355,11 +360,11 @@ export const oidcChecks: Check[] = [
     id: 'oidc.discovery.implicit-advertised',
     protocol: 'oidc',
     category: 'security',
-    title: 'No response type returns an access token from the authorization endpoint',
+    title: 'Implicit flow',
     citation: BCP('2.1.2'),
     remediation: {
-      op: 'Stop advertising response types containing "token"; keep them off by default per client.',
-      rp: 'Request response_type=code with PKCE regardless of what is advertised.',
+      op: 'Stop offering response types that include "token".',
+      rp: 'Use response_type=code with PKCE, whatever else is offered.',
     },
     run: onDiscovery((doc, evidence) => {
       const types = strings(doc.response_types_supported);
@@ -368,13 +373,13 @@ export const oidcChecks: Check[] = [
       return leaky.length
         ? {
             severity: 'warn',
-            detail: `Advertised response types that put an access token in the front channel: ${leaky.join(', ')}.`,
+            detail: `These response types return an access token in the browser redirect URL, where it can leak through history, logs, and referrers: ${leaky.join(', ')}.`,
             evidence,
             pointer: '/response_types_supported',
           }
         : {
             severity: 'pass',
-            detail: 'No advertised response type includes "token".',
+            detail: 'No response type returns an access token through the browser.',
             evidence,
             pointer: '/response_types_supported',
           };
@@ -384,7 +389,7 @@ export const oidcChecks: Check[] = [
     id: 'oidc.discovery.password-grant',
     protocol: 'oidc',
     category: 'security',
-    title: 'Resource owner password grant is not advertised',
+    title: 'Password grant',
     citation: BCP('2.4'),
     remediation: { op: 'Remove "password" from grant_types_supported and disable it per client.' },
     run: onDiscovery((doc, evidence) => {
@@ -394,7 +399,7 @@ export const oidcChecks: Check[] = [
         ? {
             severity: 'warn',
             detail:
-              'grant_types_supported includes "password", which the Security BCP says MUST NOT be used.',
+              'The provider offers the "password" grant, where the app collects the password from the user directly. Current OAuth security guidance says not to use it.',
             evidence,
             pointer: '/grant_types_supported',
           }
@@ -410,11 +415,11 @@ export const oidcChecks: Check[] = [
     id: 'oidc.discovery.pkce-s256',
     protocol: 'oidc',
     category: 'security',
-    title: 'PKCE with S256 is advertised',
+    title: 'PKCE',
     citation: BCP('2.1.1'),
     remediation: {
-      op: 'Publish code_challenge_methods_supported containing "S256".',
-      rp: 'Send an S256 challenge anyway; several providers enforce PKCE without advertising it.',
+      op: 'List "S256" in code_challenge_methods_supported.',
+      rp: 'Send an S256 challenge anyway. Some providers support PKCE without listing it.',
     },
     run: onDiscovery((doc, evidence) => {
       const pointer = '/code_challenge_methods_supported';
@@ -422,7 +427,7 @@ export const oidcChecks: Check[] = [
         return {
           severity: 'warn',
           detail:
-            'code_challenge_methods_supported is absent. This is an advertisement gap, not proof PKCE is unsupported; it has not been tested.',
+            'The provider does not list which PKCE methods it supports (code_challenge_methods_supported is missing). That is not proof PKCE is unsupported. This tool has not tested it.',
           evidence,
           pointer,
         };
@@ -431,7 +436,7 @@ export const oidcChecks: Check[] = [
       if (!methods.includes('S256')) {
         return {
           severity: 'error',
-          detail: `Only [${methods.join(', ')}] is advertised; S256 is missing.`,
+          detail: `The provider lists only [${methods.join(', ')}] for PKCE. S256, the secure method, is missing.`,
           evidence,
           pointer,
         };
@@ -439,12 +444,13 @@ export const oidcChecks: Check[] = [
       return methods.includes('plain')
         ? {
             severity: 'info',
-            detail: 'S256 is advertised, alongside the weaker "plain" method.',
+            detail:
+              'S256 is advertised, which is the secure PKCE method. The provider also accepts "plain", which sends the secret unhashed.',
             evidence,
             pointer,
             remediation: {
-              op: 'Stop accepting the "plain" method.',
-              rp: 'Always send code_challenge_method=S256; "plain" gives no protection if the request is observed.',
+              op: 'Stop accepting "plain".',
+              rp: 'Always send code_challenge_method=S256.',
             },
           }
         : { severity: 'pass', detail: 'S256 is advertised and "plain" is not.', evidence, pointer };
@@ -454,7 +460,7 @@ export const oidcChecks: Check[] = [
     id: 'oidc.discovery.rs256',
     protocol: 'oidc',
     category: 'conformance',
-    title: 'RS256 is among the ID token signing algorithms',
+    title: 'RS256 signing',
     citation: DISCOVERY,
     remediation: { op: 'Include RS256 in id_token_signing_alg_values_supported.' },
     run: onDiscovery((doc, evidence) => {
@@ -465,7 +471,7 @@ export const oidcChecks: Check[] = [
         ? { severity: 'pass', detail: `Signing algorithms: ${algs.join(', ')}.`, evidence, pointer }
         : {
             severity: 'warn',
-            detail: `Signing algorithms are [${algs.join(', ')}]; the specification says RS256 MUST be included, and many client libraries default to it.`,
+            detail: `The provider signs ID tokens with [${algs.join(', ')}] only. The spec requires RS256 to be offered, and many libraries expect it by default.`,
             evidence,
             pointer,
           };
@@ -475,11 +481,11 @@ export const oidcChecks: Check[] = [
     id: 'oidc.discovery.alg-none',
     protocol: 'oidc',
     category: 'security',
-    title: 'Unsigned ID tokens are not advertised',
+    title: 'Unsigned ID tokens',
     citation: DISCOVERY,
     remediation: {
       op: 'Remove "none" from id_token_signing_alg_values_supported.',
-      rp: 'Pin the accepted algorithms in the client; never accept "none".',
+      rp: 'Tell your library exactly which algorithms to accept, and never accept "none".',
     },
     run: onDiscovery((doc, evidence) => {
       const algs = strings(doc.id_token_signing_alg_values_supported);
@@ -488,7 +494,8 @@ export const oidcChecks: Check[] = [
       return algs.includes('none')
         ? {
             severity: 'warn',
-            detail: 'The provider advertises "none" for ID token signing.',
+            detail:
+              'The provider lists "none" as an ID token signing option, which means tokens with no signature at all.',
             evidence,
             pointer,
           }
@@ -499,7 +506,7 @@ export const oidcChecks: Check[] = [
     id: 'oidc.discovery.openid-scope',
     protocol: 'oidc',
     category: 'conformance',
-    title: 'scopes_supported lists openid',
+    title: 'openid scope',
     citation: DISCOVERY,
     remediation: { op: 'Include "openid" in scopes_supported.' },
     run: onDiscovery((doc, evidence) => {
@@ -520,26 +527,27 @@ export const oidcChecks: Check[] = [
     id: 'oidc.discovery.iss-parameter',
     protocol: 'oidc',
     category: 'security',
-    title: 'Authorization responses identify the issuer',
+    title: 'Issuer in the login response',
     citation: {
       label: 'RFC 9207 (Authorization Server Issuer Identification), section 3',
       url: 'https://www.rfc-editor.org/rfc/rfc9207#section-3',
     },
     remediation: {
-      op: 'Return "iss" in authorization responses and advertise it.',
-      rp: 'A client that talks to more than one provider needs another mix-up defence, such as a distinct redirect URI per issuer.',
+      op: 'Return "iss" in the login redirect and set authorization_response_iss_parameter_supported to true.',
+      rp: 'If your app supports more than one provider, give each one its own redirect URI so responses cannot be confused. With a single provider this does not affect you.',
     },
     run: onDiscovery((doc, evidence) =>
       doc.authorization_response_iss_parameter_supported === true
         ? {
             severity: 'pass',
-            detail: 'The "iss" authorization response parameter is advertised.',
+            detail:
+              'The provider returns its issuer in the login redirect, so an app can confirm which provider answered.',
             evidence,
           }
         : {
             severity: 'info',
             detail:
-              'authorization_response_iss_parameter_supported is not true, so multi-provider clients get no built-in mix-up defence.',
+              'The provider does not say it returns its issuer ("iss") in the login redirect. An app that supports several providers uses that value to confirm which provider a response came from. Without it, one provider could pass its response off as coming from another (a "mix-up" attack).',
             evidence,
           },
     ),
@@ -548,7 +556,7 @@ export const oidcChecks: Check[] = [
     id: 'oidc.jwks.reachable',
     protocol: 'oidc',
     category: 'conformance',
-    title: 'Key set at jwks_uri is retrievable',
+    title: 'Signing keys URL',
     citation: DISCOVERY,
     remediation: { op: 'Serve the JWK Set at jwks_uri with a 200 and no authentication.' },
     run: reachable('oidc.jwks', 'The key set'),
@@ -557,7 +565,7 @@ export const oidcChecks: Check[] = [
     id: 'oidc.jwks.signing-keys',
     protocol: 'oidc',
     category: 'conformance',
-    title: 'Key set contains signing keys',
+    title: 'Signing keys',
     citation: JWK('5'),
     remediation: { op: 'Publish at least one public key usable for signature verification.' },
     run: onJwks((keys, evidence) => {
@@ -581,7 +589,7 @@ export const oidcChecks: Check[] = [
     id: 'oidc.jwks.private-material',
     protocol: 'oidc',
     category: 'security',
-    title: 'Key set exposes no private key material',
+    title: 'Private key exposure',
     citation: JWA('6'),
     remediation: { op: 'Rotate the affected keys immediately and publish public parameters only.' },
     run: onJwks((keys, evidence) => {
@@ -594,7 +602,7 @@ export const oidcChecks: Check[] = [
       return leaks.length
         ? {
             severity: 'error',
-            detail: `Private or symmetric key material is published for ${leaks.join(', ')}.`,
+            detail: `The key set includes private key material for ${leaks.join(', ')}. Anyone can use it to forge tokens.`,
             evidence,
             pointer: '/keys',
           }
@@ -610,7 +618,7 @@ export const oidcChecks: Check[] = [
     id: 'oidc.jwks.kid-missing',
     protocol: 'oidc',
     category: 'interop',
-    title: 'Keys carry a kid when there is more than one',
+    title: 'Key IDs',
     citation: JWK('4.5'),
     remediation: { op: 'Give every key a unique kid and set it in the JWS header.' },
     run: onJwks((keys, evidence) => {
@@ -619,7 +627,7 @@ export const oidcChecks: Check[] = [
       return anonymous
         ? {
             severity: 'warn',
-            detail: `${anonymous} of ${keys.length} keys have no kid, so clients must try keys in turn and rotation becomes fragile.`,
+            detail: `${anonymous} of ${keys.length} keys have no key ID ("kid"). Apps then have to try every key to find the right one, which breaks easily when keys are rotated.`,
             evidence,
             pointer: '/keys',
           }
@@ -635,7 +643,7 @@ export const oidcChecks: Check[] = [
     id: 'oidc.jwks.kid-duplicate',
     protocol: 'oidc',
     category: 'interop',
-    title: 'kid values are unique per key type',
+    title: 'Duplicate key IDs',
     citation: JWK('4.5'),
     remediation: { op: 'Use a distinct kid for every key.' },
     run: onJwks((keys, evidence) => {
@@ -651,7 +659,7 @@ export const oidcChecks: Check[] = [
       return dupes.length
         ? {
             severity: 'error',
-            detail: `Reused kid values: ${dupes.join('; ')}. Key selection is ambiguous.`,
+            detail: `These key IDs are used by more than one key: ${dupes.join('; ')}. Apps cannot tell which key to use.`,
             evidence,
             pointer: '/keys',
           }
@@ -662,7 +670,7 @@ export const oidcChecks: Check[] = [
     id: 'oidc.jwks.rsa-key-size',
     protocol: 'oidc',
     category: 'security',
-    title: 'RSA keys are at least 2048 bits',
+    title: 'RSA key size',
     citation: JWA('3.3'),
     remediation: { op: 'Rotate to RSA keys of 2048 bits or more.' },
     run: onJwks((keys, evidence) => {
@@ -696,7 +704,7 @@ export const oidcChecks: Check[] = [
     id: 'oidc.jwks.alg-coverage',
     protocol: 'oidc',
     category: 'conformance',
-    title: 'Every advertised signing algorithm has a matching key',
+    title: 'Keys for each signing algorithm',
     citation: DISCOVERY,
     remediation: {
       op: 'Publish a key for each advertised asymmetric algorithm, or stop advertising the algorithm.',
@@ -716,13 +724,13 @@ export const oidcChecks: Check[] = [
       return orphans.length
         ? {
             severity: 'warn',
-            detail: `Advertised but unverifiable with the published keys: ${orphans.join(', ')}. Key types present: ${[...families].join(', ') || 'none'}.`,
+            detail: `The provider says it signs with ${orphans.join(', ')}, but publishes no key of the matching type, so those tokens could not be verified. Key types published: ${[...families].join(', ') || 'none'}.`,
             evidence: jwks,
             pointer: '/keys',
           }
         : {
             severity: 'pass',
-            detail: 'Each advertised asymmetric algorithm has a key of the right type.',
+            detail: 'Every signing algorithm the provider lists has a matching published key.',
             evidence: jwks,
             pointer: '/keys',
           };
@@ -732,11 +740,11 @@ export const oidcChecks: Check[] = [
     id: 'oidc.jwks.x5c-validity',
     protocol: 'oidc',
     category: 'interop',
-    title: 'Certificates attached to keys are within their validity period',
+    title: 'Certificates attached to keys',
     citation: JWK('4.7'),
     remediation: {
       op: 'Rotate keys before their certificate lapses, or drop x5c if the certificate is not meant to be validated.',
-      rp: 'Clients that build a chain from x5c will fail; clients that use only the bare key will not.',
+      rp: 'Apps that validate the attached certificate will fail. Apps that only use the raw key will keep working.',
     },
     run: onJwks((keys, evidence, ctx) => {
       const lapsed: string[] = [];
