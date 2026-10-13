@@ -2,7 +2,8 @@
 
 Diagnostics for OIDC, OAuth 2.0, SAML SSO, and SCIM integrations.
 
-It reads what a target publishes, judges it against the specifications, current security practice, and known interop problems, and says plainly which claims were verified and which were only read from a document.
+It reads what a target publishes and judges it against the specifications, current security practice, and known interop problems.
+It says plainly which claims were verified and which were only read from a document.
 
 Every finding carries a provenance:
 
@@ -25,18 +26,23 @@ node packages/cli/dist/main.js inspect ./saml-response.xml --metadata https://id
 SCIM_TOKEN=... node packages/cli/dist/main.js inspect https://app.example/scim/v2
 ```
 
-A target with no OpenID configuration that publishes OAuth 2.0 authorization server metadata (RFC 8414) is detected as `oauth`.
-It is judged as an authorization server under `oauth.metadata.*` checks, and the rules that only bind an OpenID Provider are not applied.
-Most MCP servers are targets of this kind.
-Pass `--protocol oauth` to judge a target that publishes both documents by its authorization server metadata.
-A file holding an ID token or a JWT access token is checked against the keys of the issuer it names: its signature is verified, and its claims are judged at the evaluation instant.
-The report says which of the two kinds it took the token for, and why.
-A file holding a SAML response, as XML or as the base64 the browser posted, has its signatures verified and its assertion judged.
-With `--metadata` the signatures are checked against the certificates the IdP publishes; without it they can only be shown to be consistent with the certificate carried inside the response, which says nothing about who signed it.
-The protocol is detected from the target; pass `--protocol` to skip detection.
-The command exits 1 when a finding reaches `--fail-on` (default `error`), so it can gate CI.
-`--overview` lists what the target publishes, followed by what no published document can show.
-`--at <ISO date>` judges time-bounded evidence as of another instant, for example the moment an incident happened.
+The protocol is detected from the target.
+What it takes beyond an OIDC issuer, SAML metadata, or a SCIM base URL:
+
+- **OAuth authorization server** - a target with no OpenID configuration that publishes RFC 8414 metadata is detected as `oauth`.
+  It is judged under `oauth.metadata.*` checks, without the rules that only bind an OpenID Provider.
+  Most MCP servers are this kind.
+- **ID token or JWT access token** - the signature is verified against the keys of the issuer it names, and the claims are judged at the evaluation instant.
+  The report says which kind it took the token for, and why.
+- **SAML response**, as XML or as the base64 the browser posted - its signatures are verified and its assertion judged.
+
+| Flag | Effect |
+| --- | --- |
+| `--protocol` | Skips detection. `oauth` judges a target that publishes both documents by its authorization server metadata. |
+| `--metadata` | Checks SAML signatures against the certificates the IdP publishes. Without it they are only shown consistent with the certificate inside the response, which says nothing about who signed it. |
+| `--fail-on` | Exits 1 when a finding reaches this severity (default `error`), so it can gate CI. |
+| `--overview` | Lists what the target publishes, then what no published document can show. |
+| `--at <ISO date>` | Judges time-bounded evidence as of another instant, such as the moment of an incident. |
 
 ## Web interface
 
@@ -44,21 +50,23 @@ The command exits 1 when a finding reaches `--fail-on` (default `error`), so it 
 pnpm dev
 ```
 
-URLs are fetched through a proxy that accepts a URL and nothing else, and refuses anything that is not a public host.
-Pasted material is never taken for a URL: under a protocol that cannot read it, it is refused and sent nowhere, here and in the CLI.
-Pasted XML is parsed in the browser and is never sent.
-A pasted ID token or JWT access token is read and verified in the browser too; only the issuer it names is asked for its public documents.
-A pasted SAML response is read and verified in the browser as well, and a second field takes the IdP metadata as a URL or as XML.
-Choosing a protocol shapes the form to it: the hint in the target field says what that protocol takes, and SAML offers the IdP metadata field before anything is pasted.
-The evaluation instant is offered only where something is judged at one, which is OIDC, SAML, and detection.
-Set `IDI_ALLOW_PRIVATE=1` to let the local proxy reach a target on your own machine.
+- **URLs** go through a proxy that accepts a URL and nothing else, and refuses any host that is not public.
+  Set `IDI_ALLOW_PRIVATE=1` to let the local proxy reach a target on your own machine.
+- **Pasted material** is never taken for a URL.
+  Under a protocol that cannot read it, it is refused and sent nowhere, here and in the CLI.
+- **Pasted XML, tokens, and SAML responses** are read and verified in the browser.
+  Pasted XML is never sent, and for a token only the issuer it names is asked for its public documents.
+  A second field takes the IdP metadata for a SAML response, as a URL or as XML.
+- **The form follows the protocol chosen**: the target hint says what that protocol takes, and SAML offers the IdP metadata field up front.
+  The evaluation instant appears only for OIDC, SAML, and detection, where something is judged at one.
 
 ## Status
 
-Milestone 1: static inspection of published documents for all four protocols, in the CLI and the web interface.
-Milestone 2, in progress: pasted ID tokens, JWT access tokens, and SAML responses with signature verification are built.
-It is hosted at https://identity-inspector.balashekhar.workers.dev.
-Encrypted assertions, probes, and live flows are not built yet.
+Hosted at https://identity-inspector.balashekhar.workers.dev.
+
+- **Milestone 1, done**: static inspection of published documents for all four protocols, in the CLI and the web interface.
+- **Milestone 2, in progress**: pasted ID tokens, JWT access tokens, and SAML responses with signature verification are built.
+- **Not built yet**: encrypted assertions, probes, and live flows.
 
 ## Layout
 
