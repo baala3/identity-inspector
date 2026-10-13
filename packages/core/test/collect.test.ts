@@ -241,6 +241,32 @@ describe('collect', () => {
     });
   });
 
+  it.each([
+    ['a token', TOKEN, 'scim'],
+    ['a token', TOKEN, 'oauth'],
+    ['a token', TOKEN, 'saml'],
+    ['metadata', METADATA, 'oidc'],
+    ['metadata', METADATA, 'oauth'],
+    ['metadata', METADATA, 'scim'],
+    ['a response', RESPONSE, 'oidc'],
+    ['a response', Buffer.from(RESPONSE).toString('base64'), 'scim'],
+  ] as const)(
+    'refuses %s pasted under a protocol that cannot read it, and requests nothing',
+    async (_, pasted, protocol) => {
+      const { fetcher, calls } = server({});
+      await expect(collect(pasted, fetcher, { protocol })).rejects.toThrow(/was not sent anywhere/);
+      expect(calls).toHaveLength(0);
+    },
+  );
+
+  it('refuses a token given where the metadata of a response belongs', async () => {
+    const { fetcher, calls } = server({});
+    await expect(collect(RESPONSE, fetcher, { samlMetadata: TOKEN })).rejects.toThrow(
+      /was not sent anywhere/,
+    );
+    expect(calls).toHaveLength(0);
+  });
+
   it('sends SCIM headers to SCIM endpoints and nowhere else', async () => {
     const { fetcher, calls } = server({});
     const scimHeaders = { authorization: 'Bearer secret' };

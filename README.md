@@ -48,6 +48,7 @@ URLs are fetched through a proxy that accepts a URL and nothing else, and refuse
 Pasted XML is parsed in the browser and is never sent.
 A pasted ID token or JWT access token is read and verified in the browser too; only the issuer it names is asked for its public documents.
 A pasted SAML response is read and verified in the browser as well, and a second field takes the IdP metadata as a URL or as XML.
+Pasted material is never taken for a URL: under a protocol that cannot read it, it is refused and sent nowhere, here and in the CLI.
 Set `IDI_ALLOW_PRIVATE=1` to let the local proxy reach a target on your own machine.
 
 ## Status

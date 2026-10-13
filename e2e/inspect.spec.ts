@@ -277,6 +277,38 @@ test('refuses a token whose claims were changed after it was signed', async ({ p
   await expect(finding(page, 'oidc.token.signature')).toContainText('does not verify');
 });
 
+test('refuses a token pasted under a protocol that cannot read it, and sends it nowhere', async ({
+  page,
+}) => {
+  const token = await idToken();
+  const requested: string[] = [];
+  page.context().on('request', (request) => requested.push(request.url()));
+
+  await page.goto('/');
+  await page.getByLabel('Target').fill(token);
+  await page.locator('.segmented label', { hasText: 'SCIM' }).click();
+  await page.getByRole('button', { name: 'Inspect' }).click();
+
+  await expect(page.getByRole('alert')).toContainText('It was not sent anywhere');
+  await expect(page.locator('.results')).toHaveCount(0);
+  expect(requested.filter((url) => url.includes('/api/fetch'))).toEqual([]);
+  expect(requested.join('\n')).not.toContain(token.split('.')[2]);
+});
+
+test('the CLI refuses a token file under a protocol that cannot read it', async () => {
+  const file = test.info().outputPath('id-token.jwt');
+  await writeFile(file, `${await idToken()}\n`);
+  const outcome = await run('node', [
+    'packages/cli/dist/main.js',
+    'inspect',
+    file,
+    '--protocol',
+    'scim',
+  ]).catch((error: { code: number; stderr: string }) => error);
+  expect(outcome).toMatchObject({ code: 2 });
+  expect(outcome.stderr.trim()).toMatch(/^A pasted token .* It was not sent anywhere\.$/);
+});
+
 test('the CLI verifies an ID token read from a file', async () => {
   const file = test.info().outputPath('id-token.jwt');
   await writeFile(file, `${await idToken()}\n`);
