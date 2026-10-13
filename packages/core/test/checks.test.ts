@@ -2,6 +2,7 @@ import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import { checks, evaluate } from '../src/engine.js';
 import type { Evidence, EvidenceKind, Severity, Workspace } from '../src/model.js';
+import { identity, sign } from './support/saml.js';
 
 const fixture = (name: string) =>
   readFileSync(new URL(`./fixtures/${name}`, import.meta.url), 'utf8').trim();
@@ -195,6 +196,74 @@ const samlFetched = (status: number): Workspace => ({
   target: { protocol: 'saml', input: 'https://idp.example/metadata' },
   evidence: [fetched('saml.metadata', samlXml(), status, 'application/xml')],
 });
+
+// --- SAML response ------------------------------------------------------
+
+const IDP = identity('idp.example', ['-newkey', 'rsa:2048']);
+const STRANGER = identity('stranger.example', ['-newkey', 'rsa:2048']);
+const IDP_METADATA = samlXml({ keys: key(IDP.cert) });
+
+interface ResponseOptions {
+  /** The last part of the status URN, with an optional second level and message. */
+  status?: string;
+  secondStatus?: string;
+  statusMessage?: string;
+  version?: string;
+  /** Replaces the assertion, or removes it when empty. */
+  assertions?: string;
+  conditions?: string;
+  subject?: string;
+}
+
+const STATUS = 'urn:oasis:names:tc:SAML:2.0:status:';
+const BEARER_DATA =
+  'Recipient="https://sp.example/acs" NotOnOrAfter="2027-06-01T00:05:00Z" InResponseTo="_req1"';
+const bearer = (data = BEARER_DATA) =>
+  `<saml:SubjectConfirmation Method="urn:oasis:names:tc:SAML:2.0:cm:bearer"><saml:SubjectConfirmationData ${data}/></saml:SubjectConfirmation>`;
+const conditions = (attrs: string, audience = 'https://sp.example/metadata') =>
+  `<saml:Conditions ${attrs}>${audience ? `<saml:AudienceRestriction><saml:Audience>${audience}</saml:Audience></saml:AudienceRestriction>` : ''}</saml:Conditions>`;
+
+function assertionXml(o: ResponseOptions = {}, id = '_a1'): string {
+  return `<saml:Assertion xmlns:saml="urn:oasis:names:tc:SAML:2.0:assertion" ID="${id}" Version="2.0" IssueInstant="2027-06-01T00:00:00Z"><saml:Issuer>https://idp.example/metadata</saml:Issuer><saml:Subject><saml:NameID Format="urn:oasis:names:tc:SAML:1.1:nameid-format:emailAddress">user@example.com</saml:NameID>${
+    o.subject ?? bearer()
+  }</saml:Subject>${
+    o.conditions ??
+    conditions('NotBefore="2027-05-31T23:59:00Z" NotOnOrAfter="2027-06-01T00:05:00Z"')
+  }<saml:AuthnStatement AuthnInstant="2027-06-01T00:00:00Z" SessionIndex="_s1"><saml:AuthnContext><saml:AuthnContextClassRef>urn:oasis:names:tc:SAML:2.0:ac:classes:PasswordProtectedTransport</saml:AuthnContextClassRef></saml:AuthnContext></saml:AuthnStatement><saml:AttributeStatement><saml:Attribute Name="urn:oid:2.5.4.42" FriendlyName="givenName"><saml:AttributeValue>Ada</saml:AttributeValue></saml:Attribute><saml:Attribute Name="groups"><saml:AttributeValue>admins</saml:AttributeValue><saml:AttributeValue>staff</saml:AttributeValue></saml:Attribute></saml:AttributeStatement></saml:Assertion>`;
+}
+
+function responseXml(o: ResponseOptions = {}): string {
+  const second = o.secondStatus ? `<samlp:StatusCode Value="${STATUS}${o.secondStatus}"/>` : '';
+  const said = o.statusMessage
+    ? `<samlp:StatusMessage>${o.statusMessage}</samlp:StatusMessage>`
+    : '';
+  return `<samlp:Response xmlns:samlp="urn:oasis:names:tc:SAML:2.0:protocol" xmlns:saml="urn:oasis:names:tc:SAML:2.0:assertion" ID="_r1" Version="${o.version ?? '2.0'}" IssueInstant="2027-06-01T00:00:00Z" Destination="https://sp.example/acs" InResponseTo="_req1"><saml:Issuer>https://idp.example/metadata</saml:Issuer><samlp:Status><samlp:StatusCode Value="${STATUS}${o.status ?? 'Success'}">${second}</samlp:StatusCode>${said}</samlp:Status>${
+    o.assertions ?? assertionXml(o)
+  }</samlp:Response>`;
+}
+
+/** A workspace holding a pasted response, with the IdP metadata beside it when given. */
+function response(raw: string, metadata?: string): Workspace {
+  const evidence: Evidence[] = [
+    { id: 'saml.response', kind: 'saml.response', provenance: 'user-supplied', raw },
+  ];
+  if (metadata) {
+    evidence.push({
+      id: 'saml.metadata',
+      kind: 'saml.metadata',
+      provenance: 'user-supplied',
+      raw: metadata,
+    });
+  }
+  return { target: { protocol: 'saml', input: 'https://idp.example/metadata' }, evidence };
+}
+
+const SIGNED_ASSERTION = sign(responseXml(), IDP, { element: 'Assertion' });
+const SIGNED_RESPONSE = sign(responseXml(), IDP, { element: 'Response' });
+const SHA1 = {
+  signatureAlgorithm: 'http://www.w3.org/2000/09/xmldsig#rsa-sha1',
+  digestAlgorithm: 'http://www.w3.org/2000/09/xmldsig#sha1',
+};
 
 // --- SCIM ---------------------------------------------------------------
 
@@ -575,6 +644,140 @@ const scenarios: Record<string, Scenario[]> = {
     [scim(), 'pass'],
     [scim({ input: 'http://app.example/scim/v2' }), 'error'],
   ],
+  'saml.response.well-formed': [
+    [response(SIGNED_ASSERTION), 'pass', /Response carrying 1 assertion\./],
+    [response(assertionXml()), 'pass', /Assertion on its own/],
+    [
+      response('<samlp:Response xmlns:samlp="urn:oasis:names:tc:SAML:2.0:protocol"'),
+      'error',
+      /cannot be read/,
+    ],
+    [response('<Response/>'), 'error', /not a SAML 2.0 Response or Assertion/],
+    [
+      response(`<!DOCTYPE r [<!ENTITY e "x">]>${responseXml()}`),
+      'error',
+      /DTD or entities, which are refused/,
+    ],
+    [response(responseXml({ version: '1.1' })), 'error', /version "1.1"/],
+  ],
+  'saml.response.status': [
+    [response(responseXml()), 'pass'],
+    [
+      response(
+        responseXml({
+          status: 'Responder',
+          secondStatus: 'RequestDenied',
+          statusMessage: 'User is not assigned to this application',
+          assertions: '',
+        }),
+      ),
+      'error',
+      /reports Responder \(RequestDenied\), not Success, and says: "User is not assigned/,
+    ],
+  ],
+  'saml.assertion.readable': [
+    [response(responseXml()), 'pass'],
+    [
+      response(responseXml({ assertions: assertionXml() + assertionXml({}, '_a2') })),
+      'warn',
+      /2 assertions/,
+    ],
+    [
+      response(responseXml({ assertions: '<saml:EncryptedAssertion/>' })),
+      'info',
+      /encrypted for the SP/,
+    ],
+    [
+      response(responseXml({ status: 'Responder', assertions: '' })),
+      'info',
+      /carries no assertion/,
+    ],
+  ],
+  'saml.response.signed': [
+    [response(SIGNED_ASSERTION), 'pass', /assertion is signed\. The Response around it is not/],
+    [response(SIGNED_RESPONSE), 'pass', /covers the assertion inside it/],
+    [response(sign(SIGNED_ASSERTION, IDP, { element: 'Response' })), 'pass', /Both/],
+    [response(responseXml()), 'error', /Neither/],
+  ],
+  'saml.response.signature-reference': [
+    [response(SIGNED_ASSERTION), 'pass'],
+    // The signed assertion is given a new ID, so its signature now points at nothing it sits in.
+    [
+      response(SIGNED_ASSERTION.replace('ID="_a1"', 'ID="_forged"')),
+      'error',
+      /refers to "#_a1" instead/,
+    ],
+    // A second element takes the signed ID, which is how a wrapped copy hides.
+    [
+      response(
+        SIGNED_ASSERTION.replace('</samlp:Response>', '<saml:Advice ID="_a1"/></samlp:Response>'),
+      ),
+      'error',
+      /2 elements share the ID "_a1"/,
+    ],
+  ],
+  'saml.response.signature': [
+    [
+      response(SIGNED_ASSERTION, IDP_METADATA),
+      'pass',
+      /verifies against the certificate "idp.example" that the IdP publishes/,
+    ],
+    [response(SIGNED_RESPONSE, IDP_METADATA), 'pass', /signature on the Response verifies/],
+    [response(SIGNED_ASSERTION), 'info', /does not show who signed it/],
+    [
+      response(SIGNED_ASSERTION.replace('user@example.com', 'admin@example.com'), IDP_METADATA),
+      'error',
+      /changed after it was signed/,
+    ],
+    [
+      response(sign(responseXml(), STRANGER, { element: 'Assertion' }), IDP_METADATA),
+      'error',
+      /"stranger.example" carried inside the message, which is not one the IdP publishes/,
+    ],
+  ],
+  'saml.response.signature-algorithm': [
+    [response(SIGNED_ASSERTION), 'pass', /rsa-sha256 over a sha256 digest/],
+    [response(sign(responseXml(), IDP, { element: 'Assertion', ...SHA1 })), 'warn', /SHA-1/],
+  ],
+  'saml.response.issuer': [
+    [response(SIGNED_ASSERTION, IDP_METADATA), 'pass'],
+    [
+      response(
+        SIGNED_ASSERTION,
+        samlXml({ keys: key(IDP.cert), entityAttrs: 'entityID="https://other.example/metadata"' }),
+      ),
+      'error',
+      /metadata describes https:\/\/other.example\/metadata/,
+    ],
+  ],
+  'saml.assertion.time': [
+    [response(responseXml()), 'pass', /in 5 minutes/],
+    [
+      response(responseXml()),
+      'warn',
+      /expired at 2027-06-01T00:05:00.000Z, 1 hour before/,
+      new Date('2027-06-01T01:05:00Z'),
+    ],
+    [response(responseXml()), 'error', /SP clock is behind/, new Date('2027-05-31T23:58:00Z')],
+    [response(responseXml({ conditions: conditions('') })), 'warn', /no NotOnOrAfter/],
+  ],
+  'saml.assertion.audience': [
+    [response(responseXml()), 'info', /addressed to https:\/\/sp.example\/metadata/],
+    [
+      response(responseXml({ conditions: conditions('NotOnOrAfter="2027-06-01T00:05:00Z"', '') })),
+      'warn',
+      /names no Audience/,
+    ],
+  ],
+  'saml.assertion.subject-confirmation': [
+    [response(responseXml()), 'pass', /in response to request _req1/],
+    [
+      response(responseXml({ subject: bearer('NotOnOrAfter="2027-06-01T00:05:00Z"') })),
+      'error',
+      /it has no Recipient/,
+    ],
+    [response(responseXml({ subject: '' })), 'error', /no bearer SubjectConfirmation/],
+  ],
   'scim.discovery.reachable': [
     [scim(), 'pass'],
     [scim({ status: 401 }), 'info', /requires authentication/],
@@ -670,6 +873,7 @@ describe('clean fixtures', () => {
     ['oidc with a pasted access token', withToken(ACCESS_TOKEN)],
     ['saml idp', saml()],
     ['saml sp', saml({ role: 'sp' })],
+    ['saml response with the IdP metadata', response(SIGNED_ASSERTION, IDP_METADATA)],
     ['scim', scim()],
   ])('%s raises no errors or warnings', async (_name, workspace) => {
     const { summary } = await evaluate(workspace, NOW);
@@ -720,6 +924,26 @@ describe('overview', () => {
         'RSA 2048 bits',
         'sha256WithRSAEncryption',
       ],
+    });
+  });
+
+  it('restates what a pasted SAML response says, ahead of the metadata', async () => {
+    const report = await evaluate(response(SIGNED_ASSERTION, IDP_METADATA), NOW);
+    expect(report.overview.map((s) => s.id).slice(0, 4)).toEqual([
+      'response',
+      'assertion',
+      'attributes',
+      'identity',
+    ]);
+    expect(await facts(response(SIGNED_ASSERTION))).toMatchObject({
+      'response/Status': ['Success'],
+      'response/Destination': ['https://sp.example/acs'],
+      'assertion/Subject (NameID)': ['user@example.com'],
+      'assertion/NameID format': ['emailAddress'],
+      'assertion/Audience': ['https://sp.example/metadata'],
+      'assertion/Authentication context': ['PasswordProtectedTransport'],
+      'attributes/givenName': ['Ada'],
+      'attributes/groups': ['admins', 'staff'],
     });
   });
 

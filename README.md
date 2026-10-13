@@ -20,11 +20,14 @@ node packages/cli/dist/main.js inspect accounts.google.com
 node packages/cli/dist/main.js inspect https://mocksaml.com/api/saml/metadata
 node packages/cli/dist/main.js inspect ./idp-metadata.xml --format md
 node packages/cli/dist/main.js inspect ./id-token.jwt
+node packages/cli/dist/main.js inspect ./saml-response.xml --metadata https://idp.example/metadata
 SCIM_TOKEN=... node packages/cli/dist/main.js inspect https://app.example/scim/v2
 ```
 
 A file holding an ID token or a JWT access token is checked against the keys of the issuer it names: its signature is verified, and its claims are judged at the evaluation instant.
 The report says which of the two kinds it took the token for, and why.
+A file holding a SAML response, as XML or as the base64 the browser posted, has its signatures verified and its assertion judged.
+With `--metadata` the signatures are checked against the certificates the IdP publishes; without it they can only be shown to be consistent with the certificate carried inside the response, which says nothing about who signed it.
 The protocol is detected from the target; pass `--protocol` to skip detection.
 The command exits 1 when a finding reaches `--fail-on` (default `error`), so it can gate CI.
 `--at <ISO date>` judges time-bounded evidence as of another instant, for example the moment an incident happened.
@@ -38,14 +41,15 @@ pnpm dev
 URLs are fetched through a proxy that accepts a URL and nothing else, and refuses anything that is not a public host.
 Pasted XML is parsed in the browser and is never sent.
 A pasted ID token or JWT access token is read and verified in the browser too; only the issuer it names is asked for its public documents.
+A pasted SAML response is read and verified in the browser as well, and a second field takes the IdP metadata as a URL or as XML.
 Set `IDI_ALLOW_PRIVATE=1` to let the local proxy reach a target on your own machine.
 
 ## Status
 
 Milestone 1: static inspection of published documents for all three protocols, in the CLI and the web interface.
-Milestone 2, in progress: pasted ID tokens and JWT access tokens with signature verification are built.
+Milestone 2, in progress: pasted ID tokens, JWT access tokens, and SAML responses with signature verification are built.
 It is hosted at https://identity-inspector.balashekhar.workers.dev.
-Pasted SAML assertions, probes, and live flows are not built yet.
+Encrypted assertions, probes, and live flows are not built yet.
 
 ## Layout
 

@@ -15,6 +15,7 @@ export type EvidenceKind =
   | 'oidc.jwks'
   | 'oidc.token'
   | 'saml.metadata'
+  | 'saml.response'
   | 'scim.service-provider-config'
   | 'scim.resource-types'
   | 'scim.schemas';

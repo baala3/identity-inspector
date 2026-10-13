@@ -6,6 +6,7 @@ export {
   collectScim,
   detect,
   looksLikeXml,
+  samlMessage,
 } from './collect.js';
 export { checks, evaluate } from './engine.js';
 export { KIND_LABEL, kindOf, looksLikeJwt, parseJwt } from './jwt.js';

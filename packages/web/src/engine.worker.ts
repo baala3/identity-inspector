@@ -34,11 +34,10 @@ const viaProxy =
 self.onmessage = async ({ data }: MessageEvent<InspectRequest>) => {
   const reply = (message: InspectResponse) => self.postMessage(message);
   try {
-    const workspace = await collect(
-      data.input,
-      viaProxy(data.proxy),
-      data.protocol ? { protocol: data.protocol } : {},
-    );
+    const workspace = await collect(data.input, viaProxy(data.proxy), {
+      ...(data.protocol && { protocol: data.protocol }),
+      ...(data.metadata && { samlMetadata: data.metadata }),
+    });
     const report = await evaluate(workspace, data.at ? new Date(data.at) : new Date());
     reply({
       id: data.id,

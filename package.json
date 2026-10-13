@@ -21,6 +21,7 @@
     "@playwright/test": "^1.64.0",
     "@types/node": "^24.0.0",
     "typescript": "^5.9.0",
-    "vitest": "^3.2.0"
+    "vitest": "^3.2.0",
+    "xml-crypto": "^6.3.3"
   }
 }

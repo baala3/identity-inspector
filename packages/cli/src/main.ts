@@ -17,13 +17,15 @@ import {
 const USAGE = `Usage: idi inspect <target> [options]
 
 <target> is an OIDC issuer or domain, a file holding an ID token or a JWT
-access token, a SAML metadata URL or XML file, or a SCIM base URL.
+access token, a SAML metadata URL or XML file, a file holding a SAML
+response (XML or base64), or a SCIM base URL.
 
 Options:
   --protocol <oidc|saml|scim>   Skip detection
   --format <text|json|md>       Output format (default text)
   --fail-on <error|warn|never>  Exit 1 at this severity or worse (default error)
   --at <ISO date>               Evaluation instant (default now)
+  --metadata <url|file>         IdP metadata to verify a SAML response against
   --all                         Also list passing checks in text output
   --overview                    Also list what the target publishes in text output
 
@@ -107,6 +109,7 @@ async function main(): Promise<number> {
       format: { type: 'string', default: 'text' },
       'fail-on': { type: 'string', default: 'error' },
       at: { type: 'string' },
+      metadata: { type: 'string' },
       all: { type: 'boolean', default: false },
       overview: { type: 'boolean', default: false },
       help: { type: 'boolean', short: 'h', default: false },
@@ -132,6 +135,11 @@ async function main(): Promise<number> {
   const workspace = await collect(input, fetcher, {
     ...(values.protocol && { protocol: values.protocol as Protocol }),
     ...(token && { scimHeaders: { authorization: `Bearer ${token}` } }),
+    ...(values.metadata && {
+      samlMetadata: existsSync(values.metadata)
+        ? readFileSync(values.metadata, 'utf8')
+        : values.metadata,
+    }),
   });
   const report = await evaluate(workspace, instant);
 

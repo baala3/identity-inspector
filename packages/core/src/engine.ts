@@ -1,5 +1,6 @@
 import { oidcChecks } from './checks/oidc.js';
 import { samlChecks } from './checks/saml.js';
+import { samlResponseChecks } from './checks/saml-response.js';
 import { scimChecks } from './checks/scim.js';
 import { tokenChecks } from './checks/token.js';
 import { flowFor } from './flow.js';
@@ -10,6 +11,7 @@ export const checks: readonly Check[] = [
   ...oidcChecks,
   ...tokenChecks,
   ...samlChecks,
+  ...samlResponseChecks,
   ...scimChecks,
 ];
 
