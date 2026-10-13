@@ -83,6 +83,10 @@ _Avoid_: Fix, suggestion, advice
 What the evidence states about a target, restated with no verdict attached.
 _Avoid_: Summary, configuration, details
 
+**Unseen**:
+What evidence of the kind gathered can never show, however it is read, listed so that silence is not taken for a pass.
+_Avoid_: Limitations, caveats, not tested
+
 **Flow step**:
 One message in a protocol exchange, carrying a provenance and the findings that concern it.
 _Avoid_: Arrow, hop, stage

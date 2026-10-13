@@ -490,7 +490,11 @@ export function App() {
                 </button>
               </div>
               {view === 'overview' && (
-                <Overview sections={report.overview} evidence={report.evidence} />
+                <Overview
+                  sections={report.overview}
+                  evidence={report.evidence}
+                  unseen={report.unseen}
+                />
               )}
               {view === 'findings' && (
                 <div className="filters">
@@ -539,9 +543,11 @@ export function App() {
 function Overview({
   sections,
   evidence,
+  unseen,
 }: {
   sections: OverviewSection[];
   evidence: Report['evidence'];
+  unseen: string[];
 }) {
   // A document that could not be fetched leaves its sections out, which must not pass unnoticed.
   const unread = evidence.filter((e) => e.fetch && e.fetch.status !== 200);
@@ -593,6 +599,19 @@ function Overview({
           </dl>
         </section>
       ))}
+      {unseen.length > 0 && (
+        <section className="card unseen">
+          <h2>Not visible in what it publishes</h2>
+          <p className="muted">
+            No published document can show these. Only a request to the target can.
+          </p>
+          <ul>
+            {unseen.map((item) => (
+              <li key={item}>{item}</li>
+            ))}
+          </ul>
+        </section>
+      )}
     </div>
   );
 }

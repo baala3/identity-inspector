@@ -1178,6 +1178,15 @@ aside {
   gap: 4px;
 }
 
+.overview .unseen ul {
+  display: grid;
+  gap: 8px;
+  margin: 10px 0 0;
+  padding-left: 18px;
+  list-style: disc;
+  font-size: 14px;
+}
+
 .overview dl > div {
   display: grid;
   grid-template-columns: 200px minmax(0, 1fr);
