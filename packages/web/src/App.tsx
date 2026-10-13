@@ -1,5 +1,7 @@
 import {
   type Finding,
+  KIND_LABEL,
+  kindOf,
   looksLikeJwt,
   looksLikeXml,
   type OverviewSection,
@@ -73,6 +75,12 @@ function members(value: unknown, key: string): ReactNode[] {
   }
   parts.push(json.slice(at));
   return parts;
+}
+
+/** What a pasted token is taken for, or nothing when the text is not a readable token. */
+function tokenKind(text: string | undefined): string | undefined {
+  const { jwt } = text && looksLikeJwt(text) ? parseJwt(text) : {};
+  return jwt && KIND_LABEL[kindOf(jwt).kind];
 }
 
 /** Evidence as it was received: JSON indented, and a token opened into its header and payload. */
@@ -228,6 +236,8 @@ export function App() {
     ) ?? [];
   const pastedXml = looksLikeXml(input);
   const pastedToken = looksLikeJwt(input);
+  const pastedKind = tokenKind(input) ?? 'token';
+  const inspectedKind = tokenKind(result?.raw['oidc.token']);
 
   return (
     <div className="page">
@@ -274,7 +284,7 @@ export function App() {
           value={input}
           rows={pastedXml ? 8 : pastedToken ? 5 : 1}
           spellCheck={false}
-          placeholder="OIDC issuer or ID token, SAML metadata URL or XML, or SCIM base URL"
+          placeholder="OIDC issuer or token, SAML metadata URL or XML, or SCIM base URL"
           onChange={(event) => setInput(event.target.value)}
           onKeyDown={(event) => {
             if (event.key === 'Enter' && !event.shiftKey && !pastedXml) {
@@ -319,7 +329,7 @@ export function App() {
           {pastedXml
             ? 'Pasted XML is parsed in this browser and is not sent anywhere.'
             : pastedToken
-              ? 'The token is read in this browser and is not sent anywhere. Only the issuer it names is asked for its public documents.'
+              ? `This ${pastedKind} is read in this browser and is not sent anywhere. Only the issuer it names is asked for its public documents.`
               : 'URLs are fetched by a proxy that accepts a URL and nothing else. Credentials are never requested here.'}
         </p>
       </form>
@@ -364,6 +374,7 @@ export function App() {
             <div>
               <h2>
                 <span className="tag solid">{report.target.protocol.toUpperCase()}</span>{' '}
+                {inspectedKind && <span className="tag solid kind">{inspectedKind}</span>}{' '}
                 {report.target.input}
               </h2>
               <p className="muted">Evaluated as of {new Date(report.instant).toLocaleString()}</p>
@@ -454,7 +465,9 @@ export function App() {
                   What it publishes
                 </button>
               </div>
-              {view === 'overview' && <Overview sections={report.overview} />}
+              {view === 'overview' && (
+                <Overview sections={report.overview} evidence={report.evidence} />
+              )}
               {view === 'findings' && (
                 <div className="filters">
                   {SEVERITIES.map((severity) => (
@@ -499,10 +512,28 @@ export function App() {
   );
 }
 
-function Overview({ sections }: { sections: OverviewSection[] }) {
+function Overview({
+  sections,
+  evidence,
+}: {
+  sections: OverviewSection[];
+  evidence: Report['evidence'];
+}) {
+  // A document that could not be fetched leaves its sections out, which must not pass unnoticed.
+  const unread = evidence.filter((e) => e.fetch && e.fetch.status !== 200);
+  const missing = unread.length > 0 && (
+    <p className="unread" role="note">
+      Not shown, because it could not be read:{' '}
+      {unread.map((e) => `${e.source} (${e.fetch?.error ?? `HTTP ${e.fetch?.status}`})`).join(', ')}
+      . The Findings tab has the details.
+    </p>
+  );
   if (!sections.length) {
     return (
-      <p className="muted none">Nothing readable was published, so there is nothing to show.</p>
+      <div className="overview">
+        <p className="muted none">Nothing readable was published, so there is nothing to show.</p>
+        {missing}
+      </div>
     );
   }
   return (
@@ -510,6 +541,7 @@ function Overview({ sections }: { sections: OverviewSection[] }) {
       <p className="muted">
         Restated from the evidence. These are the target's own claims, not tested behaviour.
       </p>
+      {missing}
       {sections.map((section) => (
         <section key={section.id} className="card">
           <h2>{section.title}</h2>

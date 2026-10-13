@@ -8,3 +8,9 @@ We chose this because identifiers appear in exported reports, in CI suppression 
 
 - No check ships without a fixture that triggers it and a fixture that passes it, keyed by its identifier.
 - Tidying up the naming scheme later is not available as a refactor.
+
+## Exceptions
+
+- Six checks released as `oidc.id-token.*` (`format`, `alg`, `key`, `signature`, `issuer`, `time`) were renamed to `oidc.token.*` within hours of their release, at version 0.0.0, when access tokens turned out to need the same checks.
+  The old identifiers stay reserved and are not reused.
+  This was possible only because nothing could yet depend on them, and it is not a precedent for renaming an identifier that has been in use.

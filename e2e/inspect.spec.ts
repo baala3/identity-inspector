@@ -98,6 +98,12 @@ test('inspects a bare three-part hostname as a provider, not as a token', async 
 test('reports an unreachable target instead of failing', async ({ page }) => {
   await inspect(page, 'http://localhost:9/realms/none');
   await expect(finding(page, 'oidc.discovery.reachable').locator('.badge')).toHaveText('error');
+
+  // The overview has nothing to restate, and says which document is the reason.
+  await page.getByRole('tab', { name: 'What it publishes' }).click();
+  await expect(page.locator('.overview .unread')).toContainText(
+    'http://localhost:9/realms/none/.well-known/openid-configuration',
+  );
 });
 
 test('opens a shared link straight into its report', async ({ page }) => {
@@ -123,8 +129,8 @@ test('the CLI reaches the same verdicts and fails the build on errors', async ()
   ).toBe('error');
 });
 
-/** A real ID token, signed by Keycloak for its bootstrap administrator. */
-async function idToken(): Promise<string> {
+/** Real tokens, signed by Keycloak for its bootstrap administrator. */
+async function tokens(): Promise<{ id_token: string; access_token: string }> {
   const response = await fetch(`${REALM}/protocol/openid-connect/token`, {
     method: 'POST',
     body: new URLSearchParams({
@@ -135,8 +141,10 @@ async function idToken(): Promise<string> {
       scope: 'openid',
     }),
   });
-  return (await response.json()).id_token;
+  return response.json();
 }
+
+const idToken = async () => (await tokens()).id_token;
 
 /** The same token with one claim changed and the original signature kept. */
 function altered(token: string): string {
@@ -151,12 +159,17 @@ test('verifies a pasted ID token against the keys its issuer publishes', async (
   const requested: string[] = [];
   page.context().on('request', (request) => requested.push(request.url()));
 
+  await page.goto('/');
+  await page.getByLabel('Target').fill(token);
+  await expect(page.locator('.trust')).toContainText('This ID token is read in this browser');
+
   await inspect(page, token);
-  await expect(page.locator('.results-head h2')).toHaveText(`OIDC ${REALM}`);
-  await expect(finding(page, 'oidc.id-token.signature').locator('.badge')).toHaveText('pass');
-  await expect(finding(page, 'oidc.id-token.signature')).toContainText('verifies with RS256');
-  await expect(finding(page, 'oidc.id-token.issuer').locator('.badge')).toHaveText('pass');
-  await expect(finding(page, 'oidc.id-token.key').locator('.badge')).toHaveText('pass');
+  await expect(page.locator('.results-head h2')).toHaveText(`OIDC ID token ${REALM}`);
+  await expect(finding(page, 'oidc.token.signature').locator('.badge')).toHaveText('pass');
+  await expect(finding(page, 'oidc.token.signature')).toContainText('verifies with RS256');
+  await expect(finding(page, 'oidc.token.issuer').locator('.badge')).toHaveText('pass');
+  await expect(finding(page, 'oidc.token.key').locator('.badge')).toHaveText('pass');
+  await expect(finding(page, 'oidc.token.kind')).toContainText('judged as an ID token');
 
   // The token is read here: it reaches neither the address bar nor the proxy.
   expect(page.url()).not.toContain('target');
@@ -164,15 +177,27 @@ test('verifies a pasted ID token against the keys its issuer publishes', async (
   expect(requested.join('\n')).not.toContain(token.split('.')[2]);
 
   // The evidence shows what the token says, not its encoded form.
-  const evidence = page.locator('.evidence', { hasText: 'oidc.id-token' });
+  const evidence = page.locator('.evidence', { hasText: 'oidc.token' });
   await evidence.locator('summary').click();
   await expect(evidence.locator('pre')).toContainText(`"iss": "${REALM}"`);
 });
 
+test('judges a pasted access token as one, by its own rules', async ({ page }) => {
+  await inspect(page, (await tokens()).access_token);
+  await expect(page.locator('.results-head h2')).toHaveText(`OIDC access token ${REALM}`);
+  await expect(finding(page, 'oidc.token.kind')).toContainText('judged as an access token');
+  await expect(finding(page, 'oidc.token.signature').locator('.badge')).toHaveText('pass');
+  await expect(finding(page, 'oidc.access-token.required-claims')).toBeVisible();
+  await expect(finding(page, 'oidc.id-token.required-claims')).toHaveCount(0);
+
+  await page.getByRole('tab', { name: 'What it publishes' }).click();
+  await expect(page.locator('.overview')).toContainText('Pasted access token');
+});
+
 test('refuses a token whose claims were changed after it was signed', async ({ page }) => {
   await inspect(page, altered(await idToken()));
-  await expect(finding(page, 'oidc.id-token.signature').locator('.badge')).toHaveText('error');
-  await expect(finding(page, 'oidc.id-token.signature')).toContainText('does not verify');
+  await expect(finding(page, 'oidc.token.signature').locator('.badge')).toHaveText('error');
+  await expect(finding(page, 'oidc.token.signature')).toContainText('does not verify');
 });
 
 test('the CLI verifies an ID token read from a file', async () => {
@@ -186,9 +211,7 @@ test('the CLI verifies an ID token read from a file', async () => {
     'json',
   ]).catch((error: { stdout: string }) => error);
   const { findings } = JSON.parse(outcome.stdout);
-  const signature = findings.find(
-    (f: { checkId: string }) => f.checkId === 'oidc.id-token.signature',
-  );
+  const signature = findings.find((f: { checkId: string }) => f.checkId === 'oidc.token.signature');
   expect(signature).toMatchObject({ severity: 'pass', provenance: 'user-supplied' });
 });
 

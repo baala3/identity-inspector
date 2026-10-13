@@ -13,7 +13,7 @@ export type Provenance = 'discovered' | 'illustrative' | 'executed' | 'user-supp
 export type EvidenceKind =
   | 'oidc.discovery'
   | 'oidc.jwks'
-  | 'oidc.id-token'
+  | 'oidc.token'
   | 'saml.metadata'
   | 'scim.service-provider-config'
   | 'scim.resource-types'

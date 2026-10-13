@@ -543,6 +543,12 @@ footer::before {
   vertical-align: 0.5em;
 }
 
+.tag.solid.kind {
+  background: var(--yellow);
+  color: var(--panel-ink);
+  text-transform: uppercase;
+}
+
 .tag.provenance {
   box-shadow: inset 0 0 0 1px currentColor;
 }
@@ -1147,6 +1153,15 @@ aside {
 
 .overview > p {
   color: var(--muted);
+}
+
+.overview .unread {
+  padding: 14px 20px;
+  background: var(--chip);
+  border-radius: var(--r-sm);
+  color: var(--warn);
+  font-size: 14px;
+  overflow-wrap: anywhere;
 }
 
 .overview .card {
