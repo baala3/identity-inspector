@@ -91,7 +91,7 @@ describe('collect', () => {
     const workspace = await collect(`  ${TOKEN}\n`, fetcher);
     expect(workspace.target).toEqual({ protocol: 'oidc', input: 'https://op.example' });
     expect(workspace.evidence.map((e) => [e.kind, e.provenance])).toEqual([
-      ['oidc.id-token', 'user-supplied'],
+      ['oidc.token', 'user-supplied'],
       ['oidc.discovery', 'discovered'],
       ['oidc.jwks', 'discovered'],
     ]);

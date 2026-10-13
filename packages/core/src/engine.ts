@@ -1,14 +1,14 @@
-import { idTokenChecks } from './checks/id-token.js';
 import { oidcChecks } from './checks/oidc.js';
 import { samlChecks } from './checks/saml.js';
 import { scimChecks } from './checks/scim.js';
+import { tokenChecks } from './checks/token.js';
 import { flowFor } from './flow.js';
 import type { Check, Finding, Report, Severity, Workspace } from './model.js';
 import { overviewFor } from './overview.js';
 
 export const checks: readonly Check[] = [
   ...oidcChecks,
-  ...idTokenChecks,
+  ...tokenChecks,
   ...samlChecks,
   ...scimChecks,
 ];

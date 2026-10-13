@@ -274,7 +274,7 @@ export function App() {
           value={input}
           rows={pastedXml ? 8 : pastedToken ? 5 : 1}
           spellCheck={false}
-          placeholder="OIDC issuer or ID token, SAML metadata URL or XML, or SCIM base URL"
+          placeholder="OIDC issuer or token, SAML metadata URL or XML, or SCIM base URL"
           onChange={(event) => setInput(event.target.value)}
           onKeyDown={(event) => {
             if (event.key === 'Enter' && !event.shiftKey && !pastedXml) {

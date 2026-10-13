@@ -1,4 +1,13 @@
-import { fits, type Jwt, jwt, verifiable, verify } from '../jwt.js';
+import {
+  fits,
+  type Jwt,
+  jwt,
+  KIND_LABEL,
+  kindOf,
+  type TokenKind,
+  verifiable,
+  verify,
+} from '../jwt.js';
 import type { Check, CheckContext, Citation, Evidence, Outcome } from '../model.js';
 import { type Json, json, objects, strings } from '../parse.js';
 
@@ -16,6 +25,12 @@ const JWS_KID: Citation = {
   label: 'RFC 7515 (JSON Web Signature), section 4.1.4',
   url: 'https://www.rfc-editor.org/rfc/rfc7515#section-4.1.4',
 };
+const AT = (section: string): Citation => ({
+  label: `RFC 9068 (JWT Profile for OAuth 2.0 Access Tokens), section ${section}`,
+  url: `https://www.rfc-editor.org/rfc/rfc9068#section-${section}`,
+});
+const AT_TYPE = AT('2.1');
+const AT_CLAIMS = AT('2.2');
 const JWT_FORMAT: Citation = {
   label: 'RFC 7519 (JSON Web Token), section 7.2',
   url: 'https://www.rfc-editor.org/rfc/rfc7519#section-7.2',
@@ -33,14 +48,19 @@ type Result = Outcome | Outcome[] | undefined;
 const find = (ctx: CheckContext, kind: Evidence['kind']) =>
   ctx.workspace.evidence.find((e) => e.kind === kind);
 
-/** Runs a check body against the pasted token, when there is one and it decodes. */
+/**
+ * Runs a check body against the pasted token, when there is one and it decodes.
+ * A check that names a kind runs only on tokens of that kind.
+ */
 function onToken<R extends Result | Promise<Result>>(
   body: (token: Jwt, evidence: Evidence, ctx: CheckContext) => R,
+  only?: TokenKind,
 ): (ctx: CheckContext) => R | undefined {
   return (ctx) => {
-    const evidence = find(ctx, 'oidc.id-token');
+    const evidence = find(ctx, 'oidc.token');
     const token = evidence && jwt(evidence).jwt;
-    return evidence && token ? body(token, evidence, ctx) : undefined;
+    if (!evidence || !token || (only && kindOf(token).kind !== only)) return undefined;
+    return body(token, evidence, ctx);
   };
 }
 
@@ -62,6 +82,47 @@ function candidates(token: Jwt, keys: Json[]): Json[] {
   return named.length ? named : fitting;
 }
 
+type Shape = 'string' | 'number' | 'audience';
+
+const text = (value: unknown) => typeof value === 'string' && value !== '';
+
+const SHAPES: Record<Shape, { fits(value: unknown): boolean; wanted: string }> = {
+  string: { fits: text, wanted: 'a string' },
+  number: { fits: (value) => typeof value === 'number', wanted: 'a number' },
+  audience: {
+    fits: (value) => text(value) || (Array.isArray(value) && value.length > 0 && value.every(text)),
+    wanted: 'a string or a list of strings',
+  },
+};
+
+/** What is wrong with each required claim, in the order given. Empty when nothing is. */
+function shortfalls(claims: Json, required: Record<string, Shape>): string[] {
+  return Object.entries(required).flatMap(([claim, shape]) =>
+    SHAPES[shape].fits(claims[claim])
+      ? []
+      : [`"${claim}" is ${claim in claims ? `not ${SHAPES[shape].wanted}` : 'missing'}`],
+  );
+}
+
+const named = (claims: string[]) => claims.map((claim) => `"${claim}"`).join(', ');
+
+const ID_TOKEN_CLAIMS: Record<string, Shape> = {
+  iss: 'string',
+  sub: 'string',
+  aud: 'audience',
+  exp: 'number',
+  iat: 'number',
+};
+const ACCESS_TOKEN_CLAIMS: Record<string, Shape> = {
+  iss: 'string',
+  exp: 'number',
+  aud: 'audience',
+  sub: 'string',
+  client_id: 'string',
+  iat: 'number',
+  jti: 'string',
+};
+
 const UNITS: Array<[number, string]> = [
   [86_400, 'day'],
   [3_600, 'hour'],
@@ -78,9 +139,9 @@ function span(seconds: number): string {
 
 const at = (seconds: number) => new Date(seconds * 1000).toISOString();
 
-export const idTokenChecks: Check[] = [
+export const tokenChecks: Check[] = [
   {
-    id: 'oidc.id-token.format',
+    id: 'oidc.token.format',
     protocol: 'oidc',
     category: 'conformance',
     title: 'Token structure',
@@ -89,7 +150,7 @@ export const idTokenChecks: Check[] = [
       rp: 'Paste the complete token as it was received: three parts separated by dots.',
     },
     run(ctx) {
-      const evidence = find(ctx, 'oidc.id-token');
+      const evidence = find(ctx, 'oidc.token');
       if (!evidence) return undefined;
       const { error } = jwt(evidence);
       return error
@@ -102,13 +163,34 @@ export const idTokenChecks: Check[] = [
     },
   },
   {
-    id: 'oidc.id-token.alg',
+    id: 'oidc.token.kind',
+    protocol: 'oidc',
+    category: 'conformance',
+    title: 'Token kind',
+    citation: AT_TYPE,
+    remediation: {
+      op: 'Set "typ": "at+jwt" in the header of JWT access tokens, so that nothing has to guess what they are.',
+    },
+    run: onToken((token, evidence) => {
+      const { kind, why, declared } = kindOf(token);
+      return {
+        severity: 'info',
+        detail: `This is judged as an ${KIND_LABEL[kind]} because ${why}.${declared ? '' : ' That is an inference: the token does not say what it is.'}`,
+        evidence,
+        pointer: '/header/typ',
+        // Only an access token that had to be guessed at gives the provider something to change.
+        ...((declared || kind === 'id') && { remediation: {} }),
+      };
+    }),
+  },
+  {
+    id: 'oidc.token.alg',
     protocol: 'oidc',
     category: 'security',
     title: 'Signing algorithm',
     citation: JWT_BCP,
     remediation: {
-      op: 'Sign ID tokens with an asymmetric algorithm that the discovery document advertises.',
+      op: 'Sign tokens with an asymmetric algorithm, and ID tokens with one the discovery document advertises.',
       rp: 'Accept only the algorithms you expect, and never accept "none".',
     },
     run: onToken((token, evidence, ctx) => {
@@ -130,7 +212,8 @@ export const idTokenChecks: Check[] = [
           pointer,
         };
       }
-      const discovery = find(ctx, 'oidc.discovery');
+      // Discovery says how ID tokens are signed. Nothing published says it for access tokens.
+      const discovery = kindOf(token).kind === 'id' ? find(ctx, 'oidc.discovery') : undefined;
       const advertised = strings(
         (discovery && json(discovery))?.id_token_signing_alg_values_supported,
       );
@@ -161,7 +244,7 @@ export const idTokenChecks: Check[] = [
     }),
   },
   {
-    id: 'oidc.id-token.key',
+    id: 'oidc.token.key',
     protocol: 'oidc',
     category: 'interop',
     title: 'Signing key',
@@ -214,13 +297,13 @@ export const idTokenChecks: Check[] = [
     }),
   },
   {
-    id: 'oidc.id-token.signature',
+    id: 'oidc.token.signature',
     protocol: 'oidc',
     category: 'security',
     title: 'Signature',
     citation: JWS,
     remediation: {
-      op: 'Confirm the published key set contains the key that signs ID tokens.',
+      op: 'Confirm the published key set contains the key that signs tokens.',
       rp: 'Reject this token. Confirm it was copied whole and that it came from the issuer you inspected.',
     },
     run: onToken(async (token, evidence, ctx): Promise<Result> => {
@@ -266,7 +349,7 @@ export const idTokenChecks: Check[] = [
     }),
   },
   {
-    id: 'oidc.id-token.issuer',
+    id: 'oidc.token.issuer',
     protocol: 'oidc',
     category: 'conformance',
     title: 'Issuer claim',
@@ -306,44 +389,64 @@ export const idTokenChecks: Check[] = [
     citation: ID_TOKEN,
     remediation: {
       op: 'Include "iss", "sub", "aud", "exp", and "iat" in every ID token, with times as numbers of seconds.',
-      rp: 'If this is an access token rather than an ID token, these claims are not all required of it.',
+      rp: 'If this is in fact an access token, these claims are not all required of it.',
     },
     run: onToken((token, evidence) => {
-      const claims = token.claims;
-      const text = (value: unknown) => typeof value === 'string' && value !== '';
-      const problems = [
-        ...(['iss', 'sub'] as const).flatMap((claim) =>
-          text(claims[claim])
-            ? []
-            : [`"${claim}" is ${claim in claims ? 'not a string' : 'missing'}`],
-        ),
-        ...(text(claims.aud) ||
-        (Array.isArray(claims.aud) && claims.aud.length && claims.aud.every(text))
-          ? []
-          : [`"aud" is ${'aud' in claims ? 'not a string or a list of strings' : 'missing'}`]),
-        ...(['exp', 'iat'] as const).flatMap((claim) =>
-          typeof claims[claim] === 'number'
-            ? []
-            : [`"${claim}" is ${claim in claims ? 'not a number' : 'missing'}`],
-        ),
-      ];
+      const problems = shortfalls(token.claims, ID_TOKEN_CLAIMS);
+      const pointer = '/payload';
       return problems.length
         ? {
             severity: 'error',
             detail: `The token does not carry every claim an ID token must: ${problems.join(', ')}.`,
             evidence,
-            pointer: '/payload',
+            pointer,
           }
         : {
             severity: 'pass',
-            detail: 'The token carries "iss", "sub", "aud", "exp", and "iat".',
+            detail: `The token carries ${named(Object.keys(ID_TOKEN_CLAIMS))}.`,
             evidence,
-            pointer: '/payload',
+            pointer,
           };
-    }),
+    }, 'id'),
   },
   {
-    id: 'oidc.id-token.time',
+    id: 'oidc.access-token.required-claims',
+    protocol: 'oidc',
+    category: 'conformance',
+    title: 'Required claims',
+    citation: AT_CLAIMS,
+    remediation: {
+      op: `Include ${named(Object.keys(ACCESS_TOKEN_CLAIMS))} in every token that declares "typ": "at+jwt".`,
+    },
+    run: onToken((token, evidence) => {
+      const pointer = '/payload';
+      if (!kindOf(token).declared) {
+        return {
+          severity: 'info',
+          detail: `The token does not declare the JWT access token profile ("typ": "at+jwt"), so no standard says which claims it must carry. It carries ${named(Object.keys(token.claims))}.`,
+          evidence,
+          pointer,
+          remediation: {},
+        };
+      }
+      const problems = shortfalls(token.claims, ACCESS_TOKEN_CLAIMS);
+      return problems.length
+        ? {
+            severity: 'error',
+            detail: `The token declares the JWT access token profile but does not carry every claim it requires: ${problems.join(', ')}.`,
+            evidence,
+            pointer,
+          }
+        : {
+            severity: 'pass',
+            detail: `The token carries ${named(Object.keys(ACCESS_TOKEN_CLAIMS))}.`,
+            evidence,
+            pointer,
+          };
+    }, 'access'),
+  },
+  {
+    id: 'oidc.token.time',
     protocol: 'oidc',
     category: 'conformance',
     title: 'Validity period',
@@ -421,6 +524,6 @@ export const idTokenChecks: Check[] = [
           rp: AUDIENCE_ADVICE,
         },
       };
-    }),
+    }, 'id'),
   },
 ];

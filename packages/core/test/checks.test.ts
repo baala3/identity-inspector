@@ -127,8 +127,8 @@ function withToken(raw: string, o: OidcOptions = {}): Workspace {
     discovery: { id_token_signing_alg_values_supported: ['RS256', 'ES256'], ...o.discovery },
   });
   workspace.evidence.unshift({
-    id: 'oidc.id-token',
-    kind: 'oidc.id-token',
+    id: 'oidc.token',
+    kind: 'oidc.token',
     provenance: 'user-supplied',
     raw,
   });
@@ -136,6 +136,17 @@ function withToken(raw: string, o: OidcOptions = {}): Workspace {
 }
 
 const TOKEN = await signed();
+
+const ACCESS_CLAIMS: Doc = {
+  nonce: undefined,
+  client_id: 'client-1',
+  jti: 'j-1',
+  scope: 'read write',
+};
+/** An access token that says so, as RFC 9068 asks. */
+const ACCESS_TOKEN = await signed(ACCESS_CLAIMS, { typ: 'at+jwt' });
+/** An access token that can only be recognised by its scope claim. */
+const UNMARKED_ACCESS_TOKEN = await signed(ACCESS_CLAIMS);
 const [HEAD = '', , TAIL = ''] = TOKEN.split('.');
 const ALTERED = `${HEAD}.${segment({ ...CLAIMS, sub: 'someone-else' })}.${TAIL}`;
 
@@ -362,14 +373,31 @@ const scenarios: Record<string, Scenario[]> = {
     [oidc(), 'warn', /expired/, new Date('2031-01-01T00:00:00Z')],
   ],
 
-  'oidc.id-token.format': [
+  'oidc.token.format': [
     [withToken(TOKEN), 'pass'],
     [withToken(`${segment({})}.bm90.c2ln`), 'error', /payload does not decode/],
+    [withToken(`${segment({ alg: 'RSA-OAEP' })}.a2V5.aXY.Y2lwaGVy.dGFn`), 'error', /encrypted/],
   ],
-  'oidc.id-token.alg': [
+  'oidc.token.kind': [
+    [withToken(TOKEN), 'info', /an ID token because it carries "nonce"/],
+    [
+      withToken(ACCESS_TOKEN),
+      'info',
+      /an access token because its header declares "typ": "at\+jwt"\.$/,
+    ],
+    [withToken(UNMARKED_ACCESS_TOKEN), 'info', /carries "scope".*That is an inference/],
+    [withToken(await signed({ nonce: undefined })), 'info', /nothing in it marks it/],
+  ],
+  'oidc.token.alg': [
     [withToken(TOKEN), 'pass', /provider advertises/],
     [withToken(unverifiable('none')), 'error', /unsigned/],
     [withToken(unverifiable('HS256')), 'error', /does not advertise/],
+    // Discovery says nothing about how access tokens are signed, so there is nothing to compare.
+    [
+      withToken(ACCESS_TOKEN, { discovery: { id_token_signing_alg_values_supported: ['RS256'] } }),
+      'pass',
+      /signed with ES256\.$/,
+    ],
     [
       withToken(unverifiable('HS256'), {
         discovery: { id_token_signing_alg_values_supported: ['RS256', 'HS256'] },
@@ -378,7 +406,7 @@ const scenarios: Record<string, Scenario[]> = {
       /shared-secret/,
     ],
   ],
-  'oidc.id-token.key': [
+  'oidc.token.key': [
     [withToken(TOKEN), 'pass'],
     [
       withToken(await signed({}, { kid: 'gone' })),
@@ -395,14 +423,14 @@ const scenarios: Record<string, Scenario[]> = {
       /2 published keys fit/,
     ],
   ],
-  'oidc.id-token.signature': [
+  'oidc.token.signature': [
     [withToken(TOKEN), 'pass', /verifies with ES256 against kid "es"/],
     [withToken(await signed({}, { kid: undefined })), 'pass'],
     [withToken(ALTERED), 'error', /does not verify/],
     [withToken(unverifiable('HS256')), 'info', /client secret/],
     [withToken(TOKEN, { keys: KEYS }), 'info', /no published key fits/],
   ],
-  'oidc.id-token.issuer': [
+  'oidc.token.issuer': [
     [withToken(TOKEN), 'pass'],
     [withToken(await signed({ iss: 'https://op.example/' })), 'error', /trailing slash/],
   ],
@@ -414,7 +442,16 @@ const scenarios: Record<string, Scenario[]> = {
       /"sub" is missing, "exp" is not a number/,
     ],
   ],
-  'oidc.id-token.time': [
+  'oidc.access-token.required-claims': [
+    [withToken(ACCESS_TOKEN), 'pass'],
+    [
+      withToken(await signed({ ...ACCESS_CLAIMS, sub: undefined, jti: 7 }, { typ: 'at+jwt' })),
+      'error',
+      /"sub" is missing, "jti" is not a string/,
+    ],
+    [withToken(UNMARKED_ACCESS_TOKEN), 'info', /no standard says/],
+  ],
+  'oidc.token.time': [
     [withToken(TOKEN), 'pass', /in 1 hour/],
     [
       withToken(TOKEN),
@@ -629,7 +666,8 @@ describe('check catalog', () => {
 describe('clean fixtures', () => {
   it.each([
     ['oidc', oidc()],
-    ['oidc with a pasted token', withToken(TOKEN)],
+    ['oidc with a pasted ID token', withToken(TOKEN)],
+    ['oidc with a pasted access token', withToken(ACCESS_TOKEN)],
     ['saml idp', saml()],
     ['saml sp', saml({ role: 'sp' })],
     ['scim', scim()],
@@ -703,6 +741,22 @@ describe('overview', () => {
       'token/Expires at': ['2027-06-01T01:00:00.000Z'],
       'token/Other claims': ['nonce'],
     });
+  });
+
+  it('restates an access token as one, with its client and scopes', async () => {
+    const report = await evaluate(withToken(ACCESS_TOKEN), NOW);
+    expect(report.overview[0]?.title).toBe('Pasted access token');
+    expect(await facts(withToken(ACCESS_TOKEN))).toMatchObject({
+      'token/Type': ['at+jwt'],
+      'token/Issued to': ['client-1'],
+      'token/Scopes': ['read', 'write'],
+    });
+  });
+
+  it('judges an access token by its own rules, not by those for ID tokens', async () => {
+    const ids = (await evaluate(withToken(ACCESS_TOKEN), NOW)).findings.map((f) => f.checkId);
+    expect(ids).toContain('oidc.access-token.required-claims');
+    expect(ids.filter((id) => id.startsWith('oidc.id-token.'))).toEqual([]);
   });
 
   it('is empty rather than wrong when nothing could be read', async () => {

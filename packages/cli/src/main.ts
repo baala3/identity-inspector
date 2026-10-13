@@ -16,8 +16,8 @@ import {
 
 const USAGE = `Usage: idi inspect <target> [options]
 
-<target> is an OIDC issuer or domain, a file holding an ID token, a SAML
-metadata URL or XML file, or a SCIM base URL.
+<target> is an OIDC issuer or domain, a file holding an ID token or a JWT
+access token, a SAML metadata URL or XML file, or a SCIM base URL.
 
 Options:
   --protocol <oidc|saml|scim>   Skip detection

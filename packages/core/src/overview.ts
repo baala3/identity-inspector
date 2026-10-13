@@ -1,6 +1,6 @@
 import type { Element } from '@xmldom/xmldom';
 import { DS, MD } from './checks/saml.js';
-import { jwt } from './jwt.js';
+import { jwt, KIND_LABEL, kindOf } from './jwt.js';
 import type { Evidence, Fact, OverviewSection, Workspace } from './model.js';
 import { childElements, descendants, type Json, json, objects, strings, xml } from './parse.js';
 import { decodeBase64, integerBits, parseCertificate } from './x509.js';
@@ -32,7 +32,18 @@ const OIDC_ENDPOINTS: Array<[string, string]> = [
   ['pushed_authorization_request_endpoint', 'Pushed authorization requests'],
 ];
 
-const SHOWN_CLAIMS = new Set(['iss', 'sub', 'aud', 'azp', 'iat', 'nbf', 'exp']);
+const SHOWN_CLAIMS = new Set([
+  'iss',
+  'sub',
+  'aud',
+  'azp',
+  'client_id',
+  'scope',
+  'scp',
+  'iat',
+  'nbf',
+  'exp',
+]);
 
 function rsaBits(key: Json): number | undefined {
   if (typeof key.n !== 'string') return undefined;
@@ -53,15 +64,19 @@ function oidc(
 ): OverviewSection[] {
   const doc = (discovery && json(discovery)) ?? {};
   const keys = objects((jwks && json(jwks))?.keys);
-  const { header = {}, claims = {} } = (token && jwt(token).jwt) ?? {};
+  const parsed = token && jwt(token).jwt;
+  const { header = {}, claims = {} } = parsed ?? {};
+  const scopes = typeof claims.scope === 'string' ? claims.scope.split(' ') : strings(claims.scp);
   return [
-    ...section('token', 'Pasted token', [
+    ...section('token', parsed ? `Pasted ${KIND_LABEL[kindOf(parsed).kind]}` : 'Pasted token', [
+      ...text('Type', header.typ),
       ...text('Algorithm', header.alg),
       ...text('Key ID', header.kid),
       ...text('Issuer', claims.iss),
       ...text('Subject', claims.sub),
       ...chips('Audience', typeof claims.aud === 'string' ? [claims.aud] : strings(claims.aud)),
-      ...text('Issued to', claims.azp),
+      ...text('Issued to', claims.azp ?? claims.client_id),
+      ...chips('Scopes', scopes),
       ...instant('Issued at', claims.iat),
       ...instant('Not before', claims.nbf),
       ...instant('Expires at', claims.exp),
@@ -285,7 +300,7 @@ export function overviewFor(workspace: Workspace): OverviewSection[] {
   const find = (kind: Evidence['kind']) =>
     workspace.evidence.find((e) => e.kind === kind && (!e.fetch || e.fetch.status === 200));
   if (workspace.target.protocol === 'oidc')
-    return oidc(find('oidc.discovery'), find('oidc.jwks'), find('oidc.id-token'));
+    return oidc(find('oidc.discovery'), find('oidc.jwks'), find('oidc.token'));
   if (workspace.target.protocol === 'saml') return saml(find('saml.metadata'));
   return scim(workspace);
 }

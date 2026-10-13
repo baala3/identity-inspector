@@ -17,8 +17,8 @@ function asUrl(input: string): string {
 export async function collectOidc(input: string, fetcher: Fetcher): Promise<Workspace> {
   if (looksLikeJwt(input)) {
     const token: Evidence = {
-      id: 'oidc.id-token',
-      kind: 'oidc.id-token',
+      id: 'oidc.token',
+      kind: 'oidc.token',
       provenance: 'user-supplied',
       raw: input.trim(),
     };

@@ -46,7 +46,9 @@ describe('verify', () => {
 describe('looksLikeJwt', () => {
   it('recognises a token and leaves hostnames alone', () => {
     expect(looksLikeJwt(` ${segment({ alg: 'none' })}.${segment({})}.\n`)).toBe(true);
+    expect(looksLikeJwt(`${segment({ alg: 'dir' })}..aXY.Y2lwaGVy.dGFn`)).toBe(true);
     expect(looksLikeJwt('accounts.google.com')).toBe(false);
+    expect(looksLikeJwt('a.b.c.d.e')).toBe(false);
     expect(looksLikeJwt('login.microsoftonline.com')).toBe(false);
   });
 });
@@ -56,6 +58,7 @@ describe('parseJwt', () => {
     ['https://op.example', /three base64url segments/],
     [`bm90.${segment({})}.c2ln`, /header does not decode/],
     [`${segment({})}.${segment([1])}.c2ln`, /payload does not decode/],
+    [`${segment({ alg: 'dir' })}..aXY.Y2lwaGVy.dGFn`, /encrypted/],
   ])('refuses %s', (text, why) => {
     expect(parseJwt(text).error).toMatch(why);
   });
