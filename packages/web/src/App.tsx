@@ -9,7 +9,15 @@ import {
   type Severity,
   toMarkdown,
 } from '@identity-inspector/core';
-import { type FormEvent, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import {
+  type FormEvent,
+  type ReactNode,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
 import { concerns, Flow } from './Flow.js';
 import type { InspectRequest, InspectResponse } from './protocol.js';
 
@@ -49,12 +57,23 @@ function download(name: string, type: string, text: string) {
   URL.revokeObjectURL(link.href);
 }
 
-function pretty(raw: string): string {
+/** Evidence as it was received, with JSON indented and its member names set apart. */
+function Raw({ text }: { text: string }) {
+  let json: string;
   try {
-    return JSON.stringify(JSON.parse(raw), null, 2);
+    json = JSON.stringify(JSON.parse(text), null, 2);
   } catch {
-    return raw;
+    return <pre>{text}</pre>;
   }
+  const parts: ReactNode[] = [];
+  let at = 0;
+  for (const match of json.matchAll(/"(?:\\.|[^"\\])*"/g)) {
+    if (json[match.index + match[0].length] !== ':') continue;
+    parts.push(json.slice(at, match.index), <b key={match.index}>{match[0]}</b>);
+    at = match.index + match[0].length;
+  }
+  parts.push(json.slice(at));
+  return <pre>{parts}</pre>;
 }
 
 function FindingCard({ finding }: { finding: Finding }) {
@@ -107,7 +126,7 @@ export function App() {
   const [at, setAt] = useState(params.get('at') ?? '');
   const [status, setStatus] = useState<Status>({ state: 'idle' });
   const [result, setResult] = useState<Result>();
-  const [shown, setShown] = useState<Set<Severity>>(new Set(SEVERITIES));
+  const [only, setOnly] = useState<Severity>();
   const [step, setStep] = useState<string>();
   const [dark, setDark] = useState(() => document.documentElement.dataset.theme === 'dark');
   const [view, setView] = useState<'findings' | 'overview'>('findings');
@@ -186,8 +205,9 @@ export function App() {
   const report = result?.report;
   const selected = report?.flow.find((s) => s.id === step);
   const visible =
-    report?.findings.filter((f) => shown.has(f.severity) && (!selected || concerns(selected, f))) ??
-    [];
+    report?.findings.filter(
+      (f) => (!only || f.severity === only) && (!selected || concerns(selected, f)),
+    ) ?? [];
   const pasted = isPasted(input);
 
   return (
@@ -388,9 +408,7 @@ export function App() {
                       </span>
                     </summary>
                     {evidence.source && <p className="muted source">{evidence.source}</p>}
-                    <pre>
-                      {pretty(result.raw[evidence.id] ?? '') || evidence.fetch?.error || '(empty)'}
-                    </pre>
+                    <Raw text={result.raw[evidence.id] || evidence.fetch?.error || '(empty)'} />
                   </details>
                 ))}
               </section>
@@ -419,20 +437,16 @@ export function App() {
               {view === 'findings' && (
                 <div className="filters">
                   {SEVERITIES.map((severity) => (
-                    <label key={severity} className={`chip ${severity}`}>
-                      <input
-                        type="checkbox"
-                        checked={shown.has(severity)}
-                        onChange={() => {
-                          const next = new Set(shown);
-                          if (!next.delete(severity)) next.add(severity);
-                          setShown(next);
-                        }}
-                      />
-                      <span>
-                        <b>{report.summary[severity]}</b> {severity}
-                      </span>
-                    </label>
+                    <button
+                      key={severity}
+                      type="button"
+                      className={`chip ${severity}`}
+                      aria-pressed={only === severity}
+                      title={only === severity ? 'Show every severity' : `Show only ${severity}`}
+                      onClick={() => setOnly(only === severity ? undefined : severity)}
+                    >
+                      <b>{report.summary[severity]}</b> {severity}
+                    </button>
                   ))}
                   {selected && (
                     <button type="button" className="clear" onClick={() => setStep(undefined)}>

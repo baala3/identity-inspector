@@ -34,8 +34,6 @@
   --yellow: #f1bf0a;
   --panel-ink: #0b0d14;
   --white: #ffffff;
-  --code-bg: #0a1233;
-  --code-fg: #dde3f5;
 
   --r: 32px;
   --r-sm: 20px;
@@ -381,8 +379,7 @@ footer::before {
   width: 100%;
 }
 
-.segmented input,
-.chip input {
+.segmented input {
   position: absolute;
   opacity: 0;
   pointer-events: none;
@@ -420,8 +417,7 @@ footer::before {
   box-shadow: none;
 }
 
-.segmented input:focus-visible + span,
-.chip input:focus-visible + span {
+.segmented input:focus-visible + span {
   outline: 2px solid var(--yellow);
   outline-offset: 3px;
 }
@@ -912,18 +908,27 @@ aside {
   overflow-wrap: anywhere;
 }
 
-/* A terminal block: dark in both themes. */
+/* Sunk into the card: the page colour in both themes. */
 .evidence pre {
   max-height: 360px;
   margin: 0 0 16px;
-  padding: 18px;
+  padding: 16px 18px;
   overflow: auto;
-  background: var(--code-bg);
-  color: var(--code-fg);
+  background: var(--bg);
+  color: var(--ink);
   border-radius: var(--r-sm);
+  box-shadow: inset 0 0 0 1px var(--line);
+  font-size: 12px;
   line-height: 1.7;
   white-space: pre-wrap;
   overflow-wrap: anywhere;
+  scrollbar-width: thin;
+  scrollbar-color: var(--line-strong) transparent;
+}
+
+.evidence pre b {
+  font-weight: 500;
+  color: var(--accent);
 }
 
 /* ── Findings ──────────────────────────────────────────────────────────── */
@@ -960,36 +965,46 @@ aside {
   margin-bottom: 18px;
 }
 
-.chip span {
-  display: block;
+/* Severity chips: pressing one shows that severity alone, pressing it again shows all. */
+.chip {
+  height: 32px;
   padding: 0 14px;
+  border: 0;
   border-radius: 999px;
-  box-shadow: inset 0 0 0 1px var(--line);
+  background: var(--chip);
+  color: var(--tone);
+  box-shadow: inset 0 0 0 1px currentColor;
   font-family: var(--mono);
   font-size: 12px;
-  line-height: 32px;
+  transition:
+    background 220ms var(--ease),
+    color 220ms var(--ease),
+    box-shadow 220ms var(--ease);
+}
+
+.chip.error {
+  --tone: var(--error);
+}
+.chip.warn {
+  --tone: var(--warn);
+}
+.chip.info {
+  --tone: var(--info);
+}
+.chip.pass {
+  --tone: var(--pass);
+}
+
+.chip[aria-pressed="true"] {
+  background: var(--tone);
+  color: var(--bg);
+  box-shadow: none;
+}
+
+.filters:has(.chip[aria-pressed="true"]) .chip[aria-pressed="false"] {
+  background: transparent;
   color: var(--muted);
-  text-decoration: line-through;
-  cursor: pointer;
-}
-
-.chip input:checked + span {
-  background: var(--chip);
-  box-shadow: inset 0 0 0 1px currentColor;
-  text-decoration: none;
-}
-
-.chip.error input:checked + span {
-  color: var(--error);
-}
-.chip.warn input:checked + span {
-  color: var(--warn);
-}
-.chip.info input:checked + span {
-  color: var(--info);
-}
-.chip.pass input:checked + span {
-  color: var(--pass);
+  box-shadow: inset 0 0 0 1px var(--line);
 }
 
 .filters .clear {
