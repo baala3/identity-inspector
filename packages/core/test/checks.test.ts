@@ -2,6 +2,7 @@ import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import { checks, evaluate } from '../src/engine.js';
 import type { Evidence, EvidenceKind, Severity, Workspace } from '../src/model.js';
+import { toMarkdown } from '../src/render.js';
 import { identity, sign } from './support/saml.js';
 
 const fixture = (name: string) =>
@@ -1037,6 +1038,23 @@ describe('an OAuth 2.0 authorization server', () => {
   });
 });
 
+describe('what a report cannot show', () => {
+  it('is listed for whatever kind of document was read', async () => {
+    expect((await evaluate(oidc(), NOW)).unseen).toContain('Whether refresh tokens are rotated');
+    expect((await evaluate(oauth(), NOW)).unseen).toEqual((await evaluate(oidc(), NOW)).unseen);
+    expect((await evaluate(saml(), NOW)).unseen.join()).toMatch(/clock skew/);
+    expect((await evaluate(scim(), NOW)).unseen.join()).toMatch(/deprovisioned/);
+    expect(toMarkdown(await evaluate(oidc(), NOW))).toContain('Not visible in what it publishes');
+  });
+
+  it('is empty when nothing the target publishes was read', async () => {
+    expect((await evaluate(oidc({ discoveryStatus: 404, jwksStatus: 404 }), NOW)).unseen).toEqual(
+      [],
+    );
+    expect((await evaluate(response(SIGNED_ASSERTION), NOW)).unseen).toEqual([]);
+  });
+});
+
 describe('report', () => {
   it('labels every finding from pasted evidence as user-supplied and every flow step as unperformed', async () => {
     const report = await evaluate(saml(), NOW);
@@ -1078,6 +1096,25 @@ describe('overview', () => {
       'capabilities/Scopes': ['read', 'write'],
     });
     expect(await facts(oauth({ status: 500 }))).not.toHaveProperty('identity/Issuer');
+  });
+
+  it('restates how a provider says it binds tokens and signs requests', async () => {
+    const published = await facts(
+      oidc({
+        discovery: {
+          tls_client_certificate_bound_access_tokens: true,
+          token_endpoint_auth_signing_alg_values_supported: ['PS256'],
+          request_object_signing_alg_values_supported: ['PS256'],
+          dpop_signing_alg_values_supported: ['ES256'],
+        },
+      }),
+    );
+    expect(published).toMatchObject({
+      'security/Mutual-TLS-bound access tokens': ['true'],
+      'security/Client authentication signing': ['PS256'],
+      'security/Request object signing': ['PS256'],
+      'security/DPoP signing': ['ES256'],
+    });
   });
 
   it('restates what SAML metadata publishes', async () => {

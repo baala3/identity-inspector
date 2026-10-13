@@ -136,5 +136,7 @@ export interface Report {
   flow: FlowStep[];
   /** What the evidence states, with no verdict attached. */
   overview: OverviewSection[];
+  /** What evidence of this kind can never show, however it is read. */
+  unseen: string[];
   summary: Record<Severity, number>;
 }

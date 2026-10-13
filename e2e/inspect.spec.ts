@@ -164,6 +164,25 @@ test('judges a server with no OpenID configuration as an OAuth authorization ser
   }
 });
 
+test('says what no published document can show, beside what the target publishes', async ({
+  page,
+}) => {
+  await inspect(page, REALM);
+  await page.getByRole('tab', { name: 'What it publishes' }).click();
+  const unseen = page.locator('.overview .unseen');
+  await expect(unseen).toContainText('Not visible in what it publishes');
+  await expect(unseen.locator('li')).toHaveCount(6);
+  await expect(unseen).toContainText('Whether refresh tokens are rotated');
+  await page.screenshot({
+    fullPage: true,
+  });
+
+  // Nothing was read from an unreachable target, so there is nothing to qualify.
+  await inspect(page, 'http://localhost:9/realms/none');
+  await page.getByRole('tab', { name: 'What it publishes' }).click();
+  await expect(page.locator('.overview .unseen')).toHaveCount(0);
+});
+
 test('opens a shared link straight into its report', async ({ page }) => {
   await page.goto(`/?target=${encodeURIComponent(REALM)}&protocol=oidc`);
   await expect(page.locator('.results-head h2')).toHaveText(`OIDC ${REALM}`);

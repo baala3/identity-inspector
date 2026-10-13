@@ -88,6 +88,11 @@ function toText(report: Report, all: boolean, overview: boolean): string {
       }
       out.push('');
     }
+    if (report.unseen.length) {
+      out.push(styleText('bold', 'Not visible in what it publishes'));
+      for (const item of report.unseen) out.push(`  ${item}`);
+      out.push('');
+    }
   }
   out.push(styleText('bold', 'Flow'));
   for (const step of report.flow) {
