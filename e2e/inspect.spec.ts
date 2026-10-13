@@ -538,6 +538,16 @@ test('shapes the form to the protocol chosen', async ({ page }) => {
   await expect(metadata).toBeEnabled();
   await target.fill(`${REALM}/protocol/saml/descriptor`);
   await expect(metadata).toBeDisabled();
+
+  // A pasted response brings the metadata field with it under SAML and Detect, and nowhere else.
+  await target.fill('<samlp:Response xmlns:samlp="urn:oasis:names:tc:SAML:2.0:protocol"/>');
+  await expect(metadata).toBeEnabled();
+  await choose('Detect');
+  await expect(metadata).toBeEnabled();
+  for (const other of ['OIDC', 'OAUTH', 'SCIM']) {
+    await choose(other);
+    await expect(metadata).toHaveCount(0);
+  }
 });
 
 test('leaves an instant chosen under another protocol out of a SCIM inspection', async ({
