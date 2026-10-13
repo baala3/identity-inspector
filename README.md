@@ -19,9 +19,11 @@ pnpm build
 node packages/cli/dist/main.js inspect accounts.google.com
 node packages/cli/dist/main.js inspect https://mocksaml.com/api/saml/metadata
 node packages/cli/dist/main.js inspect ./idp-metadata.xml --format md
+node packages/cli/dist/main.js inspect ./id-token.jwt
 SCIM_TOKEN=... node packages/cli/dist/main.js inspect https://app.example/scim/v2
 ```
 
+A file holding an ID token is checked against the keys of the issuer it names: its signature is verified, and its claims are judged at the evaluation instant.
 The protocol is detected from the target; pass `--protocol` to skip detection.
 The command exits 1 when a finding reaches `--fail-on` (default `error`), so it can gate CI.
 `--at <ISO date>` judges time-bounded evidence as of another instant, for example the moment an incident happened.
@@ -34,13 +36,15 @@ pnpm dev
 
 URLs are fetched through a proxy that accepts a URL and nothing else, and refuses anything that is not a public host.
 Pasted XML is parsed in the browser and is never sent.
+A pasted ID token is read and verified in the browser too; only the issuer it names is asked for its public documents.
 Set `IDI_ALLOW_PRIVATE=1` to let the local proxy reach a target on your own machine.
 
 ## Status
 
 Milestone 1: static inspection of published documents for all three protocols, in the CLI and the web interface.
+Milestone 2, in progress: pasted ID tokens with signature verification are built.
 It is hosted at https://identity-inspector.balashekhar.workers.dev.
-Pasted tokens and assertions, signature verification, probes, and live flows are not built yet.
+Pasted SAML assertions, probes, and live flows are not built yet.
 
 ## Layout
 

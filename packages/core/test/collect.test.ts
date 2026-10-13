@@ -14,6 +14,9 @@ function server(routes: Record<string, string | number>) {
   return { fetcher, calls };
 }
 
+const segment = (value: unknown) => Buffer.from(JSON.stringify(value)).toString('base64url');
+const TOKEN = `${segment({ alg: 'ES256' })}.${segment({ iss: 'https://op.example' })}.c2lnbmF0dXJl`;
+
 const METADATA =
   '<md:EntityDescriptor xmlns:md="urn:oasis:names:tc:SAML:2.0:metadata" entityID="x"/>';
 
@@ -39,6 +42,12 @@ describe('detect', () => {
     expect(await detect('https://app.example/api', fetcher)).toBe('scim');
   });
 
+  it('treats a pasted token as OIDC without any request', async () => {
+    const { fetcher, calls } = server({});
+    expect(await detect(TOKEN, fetcher)).toBe('oidc');
+    expect(calls).toHaveLength(0);
+  });
+
   it('falls back on the URL shape when the host is unreachable', async () => {
     const { fetcher } = server({ 'https://idp.example/saml/idp': 0 });
     expect(await detect('https://idp.example/saml/idp', fetcher)).toBe('saml');
@@ -59,6 +68,37 @@ describe('collect', () => {
       ['oidc.discovery', 'https://op.example/.well-known/openid-configuration'],
       ['oidc.jwks', 'https://keys.example/jwks'],
     ]);
+  });
+
+  it('asks the issuer a pasted token names for its documents, and sends the token nowhere', async () => {
+    const { fetcher, calls } = server({
+      'https://op.example/.well-known/openid-configuration': JSON.stringify({
+        jwks_uri: 'https://op.example/jwks',
+      }),
+      'https://op.example/jwks': '{"keys":[]}',
+    });
+    const workspace = await collect(`  ${TOKEN}\n`, fetcher);
+    expect(workspace.target).toEqual({ protocol: 'oidc', input: 'https://op.example' });
+    expect(workspace.evidence.map((e) => [e.kind, e.provenance])).toEqual([
+      ['oidc.id-token', 'user-supplied'],
+      ['oidc.discovery', 'discovered'],
+      ['oidc.jwks', 'discovered'],
+    ]);
+    expect(calls.map((c) => c.url)).toEqual([
+      'https://op.example/.well-known/openid-configuration',
+      'https://op.example/jwks',
+    ]);
+    expect(JSON.stringify(calls)).not.toContain(TOKEN.split('.')[2]);
+  });
+
+  it('requests nothing for a token that names no issuer', async () => {
+    const { fetcher, calls } = server({});
+    const workspace = await collect(
+      `${segment({ alg: 'none' })}.${segment({ sub: 'x' })}.`,
+      fetcher,
+    );
+    expect(workspace.target.input).toBe('pasted token');
+    expect(calls).toHaveLength(0);
   });
 
   it('sends SCIM headers to SCIM endpoints and nowhere else', async () => {

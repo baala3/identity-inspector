@@ -1,3 +1,4 @@
+import { idTokenChecks } from './checks/id-token.js';
 import { oidcChecks } from './checks/oidc.js';
 import { samlChecks } from './checks/saml.js';
 import { scimChecks } from './checks/scim.js';
@@ -5,16 +6,21 @@ import { flowFor } from './flow.js';
 import type { Check, Finding, Report, Severity, Workspace } from './model.js';
 import { overviewFor } from './overview.js';
 
-export const checks: readonly Check[] = [...oidcChecks, ...samlChecks, ...scimChecks];
+export const checks: readonly Check[] = [
+  ...oidcChecks,
+  ...idTokenChecks,
+  ...samlChecks,
+  ...scimChecks,
+];
 
 const ORDER: Record<Severity, number> = { error: 0, warn: 1, info: 2, pass: 3 };
 
 /** Turns a workspace into a report, judged at the evaluation instant. */
-export function evaluate(workspace: Workspace, instant: Date = new Date()): Report {
+export async function evaluate(workspace: Workspace, instant: Date = new Date()): Promise<Report> {
   const findings: Finding[] = [];
   for (const check of checks) {
     if (check.protocol !== workspace.target.protocol) continue;
-    const result = check.run({ workspace, instant });
+    const result = await check.run({ workspace, instant });
     for (const outcome of result === undefined ? [] : [result].flat()) {
       findings.push({
         checkId: check.id,

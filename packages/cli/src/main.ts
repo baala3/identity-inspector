@@ -16,8 +16,8 @@ import {
 
 const USAGE = `Usage: idi inspect <target> [options]
 
-<target> is an OIDC issuer or domain, a SAML metadata URL or XML file,
-or a SCIM base URL.
+<target> is an OIDC issuer or domain, a file holding an ID token, a SAML
+metadata URL or XML file, or a SCIM base URL.
 
 Options:
   --protocol <oidc|saml|scim>   Skip detection
@@ -133,7 +133,7 @@ async function main(): Promise<number> {
     ...(values.protocol && { protocol: values.protocol as Protocol }),
     ...(token && { scimHeaders: { authorization: `Bearer ${token}` } }),
   });
-  const report = evaluate(workspace, instant);
+  const report = await evaluate(workspace, instant);
 
   const rendered =
     values.format === 'json'

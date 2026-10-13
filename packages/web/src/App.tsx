@@ -1,8 +1,11 @@
 import {
   type Finding,
+  looksLikeJwt,
+  looksLikeXml,
   type OverviewSection,
   type Protocol,
   type Provenance,
+  parseJwt,
   type Report,
   type Role,
   roleLabel,
@@ -47,7 +50,8 @@ interface Result {
   raw: Record<string, string>;
 }
 
-const isPasted = (input: string) => input.trimStart().startsWith('<');
+/** Pasted material is read in this browser and never becomes part of a link. */
+const isPasted = (input: string) => looksLikeXml(input) || looksLikeJwt(input);
 
 function download(name: string, type: string, text: string) {
   const link = document.createElement('a');
@@ -57,23 +61,37 @@ function download(name: string, type: string, text: string) {
   URL.revokeObjectURL(link.href);
 }
 
-/** Evidence as it was received, with JSON indented and its member names set apart. */
-function Raw({ text }: { text: string }) {
-  let json: string;
-  try {
-    json = JSON.stringify(JSON.parse(text), null, 2);
-  } catch {
-    return <pre>{text}</pre>;
-  }
+/** Indented JSON with its member names set apart. */
+function members(value: unknown, key: string): ReactNode[] {
+  const json = JSON.stringify(value, null, 2);
   const parts: ReactNode[] = [];
   let at = 0;
   for (const match of json.matchAll(/"(?:\\.|[^"\\])*"/g)) {
     if (json[match.index + match[0].length] !== ':') continue;
-    parts.push(json.slice(at, match.index), <b key={match.index}>{match[0]}</b>);
+    parts.push(json.slice(at, match.index), <b key={`${key} ${match.index}`}>{match[0]}</b>);
     at = match.index + match[0].length;
   }
   parts.push(json.slice(at));
-  return <pre>{parts}</pre>;
+  return parts;
+}
+
+/** Evidence as it was received: JSON indented, and a token opened into its header and payload. */
+function Raw({ text }: { text: string }) {
+  const { jwt } = looksLikeJwt(text) ? parseJwt(text) : {};
+  if (jwt) {
+    return (
+      <pre>
+        {members(jwt.header, 'header')}
+        {'\n\n'}
+        {members(jwt.claims, 'claims')}
+      </pre>
+    );
+  }
+  try {
+    return <pre>{members(JSON.parse(text), 'json')}</pre>;
+  } catch {
+    return <pre>{text}</pre>;
+  }
 }
 
 function FindingCard({ finding }: { finding: Finding }) {
@@ -208,7 +226,8 @@ export function App() {
     report?.findings.filter(
       (f) => (!only || f.severity === only) && (!selected || concerns(selected, f)),
     ) ?? [];
-  const pasted = isPasted(input);
+  const pastedXml = looksLikeXml(input);
+  const pastedToken = looksLikeJwt(input);
 
   return (
     <div className="page">
@@ -253,12 +272,12 @@ export function App() {
         <textarea
           id="target"
           value={input}
-          rows={pasted ? 8 : 1}
+          rows={pastedXml ? 8 : pastedToken ? 5 : 1}
           spellCheck={false}
-          placeholder="OIDC issuer or domain, SAML metadata URL or XML, or SCIM base URL"
+          placeholder="OIDC issuer or ID token, SAML metadata URL or XML, or SCIM base URL"
           onChange={(event) => setInput(event.target.value)}
           onKeyDown={(event) => {
-            if (event.key === 'Enter' && !event.shiftKey && !pasted) {
+            if (event.key === 'Enter' && !event.shiftKey && !pastedXml) {
               event.preventDefault();
               inspect(input, protocol, at);
             }
@@ -297,9 +316,11 @@ export function App() {
           </button>
         </div>
         <p className="trust">
-          {pasted
+          {pastedXml
             ? 'Pasted XML is parsed in this browser and is not sent anywhere.'
-            : 'URLs are fetched by a proxy that accepts a URL and nothing else. Credentials are never requested here.'}
+            : pastedToken
+              ? 'The token is read in this browser and is not sent anywhere. Only the issuer it names is asked for its public documents.'
+              : 'URLs are fetched by a proxy that accepts a URL and nothing else. Credentials are never requested here.'}
         </p>
       </form>
 

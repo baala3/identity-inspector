@@ -56,6 +56,7 @@ export function flowFor(workspace: Workspace): FlowStep[] {
         endpoint: doc.jwks_uri,
         concerns: [
           'oidc.jwks',
+          'oidc.id-token',
           'oidc.discovery.rs256',
           'oidc.discovery.alg-none',
           'oidc.discovery.issuer',
