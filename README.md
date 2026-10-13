@@ -47,7 +47,7 @@ Pasted tokens and assertions, signature verification, probes, and live flows are
 - `docs/adr/` - decisions that would otherwise look odd
 - `packages/core` - the engine: evidence collection, checks, reports
 - `packages/cli` - the `idi` command
-- `packages/proxy` - the public-document fetcher, deployable as a Cloudflare Worker
+- `packages/proxy` - the public-document fetcher, deployed as a Cloudflare Worker that also serves the web interface
 - `packages/web` - the web interface
 
 ## Develop
@@ -62,6 +62,15 @@ pnpm e2e
 
 Check identifiers are a public contract and are never renamed (see `docs/adr/0003-stable-check-ids.md`).
 A check needs at least two scenarios with different verdicts in `packages/core/test/checks.test.ts` before it ships.
+
+## Deploy
+
+```sh
+pnpm exec wrangler login   # once, from packages/proxy
+pnpm deploy
+```
+
+One Cloudflare Worker serves the built web interface and answers the proxy under `/api` on the same origin.
 
 ## License
 

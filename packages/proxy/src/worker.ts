@@ -18,6 +18,12 @@ export default {
         },
       });
     }
-    return handle(request, env.ALLOW_ORIGIN ? { allowOrigin: env.ALLOW_ORIGIN } : {});
+    // Static assets are served before this runs; what reaches here is the proxy under /api.
+    const url = new URL(request.url);
+    url.pathname = url.pathname.replace(/^\/api(?=\/|$)/, '');
+    return handle(
+      new Request(url, request),
+      env.ALLOW_ORIGIN ? { allowOrigin: env.ALLOW_ORIGIN } : {},
+    );
   },
 };

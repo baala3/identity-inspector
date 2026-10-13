@@ -1,6 +1,11 @@
-name = "identity-inspector-proxy"
+name = "identity-inspector"
 main = "src/worker.ts"
 compatibility_date = "2026-09-01"
+
+# The web interface is served from the same Worker, so it reaches the proxy
+# under /api on its own origin and no cross-origin request is ever made.
+[assets]
+directory = "../web/dist"
 
 [[ratelimits]]
 name = "RATE_LIMITER"
