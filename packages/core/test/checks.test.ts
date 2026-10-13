@@ -86,6 +86,45 @@ const lacking = (key: string): Workspace => {
   return ws;
 };
 
+// --- OAuth 2.0 authorization server -------------------------------------
+
+const AS_METADATA: Doc = {
+  issuer: 'https://as.example',
+  authorization_endpoint: 'https://as.example/authorize',
+  token_endpoint: 'https://as.example/token',
+  jwks_uri: 'https://as.example/jwks',
+  response_types_supported: ['code'],
+  grant_types_supported: ['authorization_code', 'refresh_token'],
+  scopes_supported: ['read', 'write'],
+  code_challenge_methods_supported: ['S256'],
+  authorization_response_iss_parameter_supported: true,
+};
+
+interface OauthOptions {
+  /** Merged over the fixture. A field set to undefined is left out. */
+  metadata?: Doc;
+  keys?: Doc[];
+  input?: string;
+  status?: number;
+  type?: string;
+  /** The OpenID configuration the server publishes as well. Without one, that path is not found. */
+  openid?: Doc;
+}
+
+/** A target that publishes authorization server metadata, and by default no OpenID configuration. */
+function oauth(o: OauthOptions = {}): Workspace {
+  return {
+    target: { protocol: 'oauth', input: o.input ?? 'https://as.example' },
+    evidence: [
+      fetched('oauth.metadata', { ...AS_METADATA, ...o.metadata }, o.status, o.type),
+      o.openid
+        ? fetched('oidc.discovery', o.openid)
+        : fetched('oidc.discovery', 'Not Found', 404, 'text/html'),
+      fetched('oidc.jwks', { keys: o.keys ?? KEYS }),
+    ],
+  };
+}
+
 // --- ID token -----------------------------------------------------------
 
 const SECONDS = NOW.getTime() / 1000;
@@ -404,6 +443,78 @@ const scenarios: Record<string, Scenario[]> = {
   'oidc.discovery.iss-parameter': [
     [oidc(), 'pass'],
     [lacking('authorization_response_iss_parameter_supported'), 'info'],
+  ],
+  'oauth.metadata.reachable': [
+    [oauth(), 'pass', /authorization server metadata returned 200/],
+    [oauth({ status: 500 }), 'error', /HTTP 500/],
+  ],
+  'oauth.metadata.content-type': [
+    [oauth(), 'pass'],
+    [oauth({ type: 'text/plain' }), 'warn'],
+  ],
+  'oauth.metadata.openid-discovery': [
+    [oauth(), 'pass', /consistent for a plain OAuth 2\.0 authorization server/],
+    [oauth({ metadata: { scopes_supported: ['openid', 'read'] } }), 'warn', /HTTP 404/],
+    [oauth({ openid: DISCOVERY }), 'info', /Inspect it as OIDC/],
+  ],
+  'oauth.metadata.issuer-match': [
+    [oauth(), 'pass'],
+    [oauth({ input: 'https://as.example/' }), 'info', /trailing slash/],
+    [oauth({ input: 'https://other.example' }), 'error', /OAuth libraries/],
+  ],
+  'oauth.metadata.issuer-templated': [
+    [oauth(), 'pass'],
+    [oauth({ metadata: { issuer: 'https://as.example/{tenant}' } }), 'warn'],
+  ],
+  'oauth.metadata.issuer-form': [
+    [oauth(), 'pass'],
+    [oauth({ metadata: { issuer: 'http://as.example' } }), 'error', /scheme is http/],
+  ],
+  'oauth.metadata.required-metadata': [
+    [oauth(), 'pass', /All 4 required/],
+    [oauth({ metadata: { response_types_supported: undefined } }), 'error', /response_types/],
+    // Nothing sends a user to an authorization endpoint when only machines are served.
+    [
+      oauth({
+        metadata: {
+          grant_types_supported: ['client_credentials'],
+          authorization_endpoint: undefined,
+        },
+      }),
+      'pass',
+      /All 3 required/,
+    ],
+    // With no grant types listed the default applies, and that default needs both endpoints.
+    [
+      oauth({ metadata: { grant_types_supported: undefined, token_endpoint: undefined } }),
+      'error',
+      /token_endpoint/,
+    ],
+  ],
+  'oauth.metadata.endpoints-https': [
+    [oauth(), 'pass'],
+    [oauth({ metadata: { token_endpoint: 'http://as.example/token' } }), 'error'],
+  ],
+  'oauth.metadata.endpoint-origins': [
+    [oauth(), 'pass'],
+    [oauth({ metadata: { token_endpoint: 'https://api.example/token' } }), 'info'],
+  ],
+  'oauth.metadata.implicit-advertised': [
+    [oauth(), 'pass'],
+    [oauth({ metadata: { response_types_supported: ['code', 'token'] } }), 'warn'],
+  ],
+  'oauth.metadata.password-grant': [
+    [oauth(), 'pass'],
+    [oauth({ metadata: { grant_types_supported: ['password'] } }), 'warn', /authorization server/],
+  ],
+  'oauth.metadata.pkce-s256': [
+    [oauth(), 'pass'],
+    [oauth({ metadata: { code_challenge_methods_supported: undefined } }), 'warn', /not proof/],
+    [oauth({ metadata: { code_challenge_methods_supported: ['plain'] } }), 'error'],
+  ],
+  'oauth.metadata.iss-parameter': [
+    [oauth(), 'pass'],
+    [oauth({ metadata: { authorization_response_iss_parameter_supported: undefined } }), 'info'],
   ],
   'oidc.jwks.reachable': [
     [oidc(), 'pass'],
@@ -871,6 +982,7 @@ describe('clean fixtures', () => {
     ['oidc', oidc()],
     ['oidc with a pasted ID token', withToken(TOKEN)],
     ['oidc with a pasted access token', withToken(ACCESS_TOKEN)],
+    ['oauth authorization server', oauth()],
     ['saml idp', saml()],
     ['saml sp', saml({ role: 'sp' })],
     ['saml response with the IdP metadata', response(SIGNED_ASSERTION, IDP_METADATA)],
@@ -878,6 +990,50 @@ describe('clean fixtures', () => {
   ])('%s raises no errors or warnings', async (_name, workspace) => {
     const { summary } = await evaluate(workspace, NOW);
     expect([summary.error, summary.warn]).toEqual([0, 0]);
+  });
+});
+
+describe('an OAuth 2.0 authorization server', () => {
+  it('is judged by its own rules, never by those for an OpenID Provider', async () => {
+    // Its OpenID configuration is evidence too, usable or not, and is still not what it is judged by.
+    for (const workspace of [oauth({ status: 500 }), oauth({ openid: DISCOVERY })]) {
+      const { findings } = await evaluate(workspace, NOW);
+      expect(findings.filter((f) => f.checkId.startsWith('oidc.discovery.'))).toEqual([]);
+    }
+    const ids = (await evaluate(oauth(), NOW)).findings.map((f) => f.checkId);
+    expect(ids.filter((id) => id.startsWith('oidc.discovery.'))).toEqual([]);
+    expect(ids).toContain('oauth.metadata.pkce-s256');
+    expect(ids).toContain('oidc.jwks.signing-keys');
+  });
+
+  it('leaves an OpenID Provider to the rules for one', async () => {
+    const ids = (await evaluate(oidc(), NOW)).findings.map((f) => f.checkId);
+    expect(ids.filter((id) => id.startsWith('oauth.'))).toEqual([]);
+  });
+
+  it('is advised under its own name, in the rules it shares with an OpenID Provider too', async () => {
+    const weak = [{ kty: 'RSA', kid: 'w', n: modulus(128) }];
+    const roles = async (workspace: Workspace) =>
+      (await evaluate(workspace, NOW)).findings
+        .filter((f) => f.severity !== 'pass')
+        .flatMap((f) => Object.keys(f.remediation));
+    expect(new Set(await roles(oauth({ keys: weak, status: 500 })))).toEqual(
+      new Set(['as', 'client']),
+    );
+    expect(await roles(oidc({ keys: weak }))).toEqual(['op']);
+  });
+
+  it('has a flow that ends at the API checking an access token, with no ID token or UserInfo', async () => {
+    const { flow } = await evaluate(oauth(), NOW);
+    expect(flow.map((s) => [s.id, s.from, s.to])).toEqual([
+      ['authorize', 'Browser', 'AS'],
+      ['redirect', 'AS', 'Client'],
+      ['token', 'Client', 'AS'],
+      ['keys', 'API', 'AS'],
+    ]);
+    expect(flow.find((s) => s.id === 'token')?.endpoint).toBe('https://as.example/token');
+    const opaque = await evaluate(oauth({ metadata: { jwks_uri: undefined } }), NOW);
+    expect(opaque.flow.map((s) => s.id)).toEqual(['authorize', 'redirect', 'token']);
   });
 });
 
@@ -910,6 +1066,18 @@ describe('overview', () => {
       'security/PKCE methods': ['S256'],
       'keys/a': ['RSA', '2048 bits', 'use: sig'],
     });
+  });
+
+  it('restates what an authorization server publishes, and nothing from the page that was not found', async () => {
+    const sections = (await evaluate(oauth(), NOW)).overview;
+    expect(sections.find((s) => s.id === 'identity')?.title).toBe('Authorization server');
+    expect(await facts(oauth())).toMatchObject({
+      'identity/Issuer': ['https://as.example'],
+      'identity/Metadata document': ['https://target.example/oauth.metadata'],
+      'endpoints/Token': ['https://as.example/token'],
+      'capabilities/Scopes': ['read', 'write'],
+    });
+    expect(await facts(oauth({ status: 500 }))).not.toHaveProperty('identity/Issuer');
   });
 
   it('restates what SAML metadata publishes', async () => {

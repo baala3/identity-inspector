@@ -30,7 +30,7 @@ import type { InspectRequest, InspectResponse } from './protocol.js';
 const PROXY = import.meta.env.VITE_PROXY_URL ?? '/api';
 
 const EXAMPLES = [
-  ['OIDC', 'accounts.google.com'],
+  ['OAUTH', 'mcp.notion.com'],
   ['OIDC', 'https://login.microsoftonline.com/common/v2.0'],
   ['SAML', 'https://mocksaml.com/api/saml/metadata'],
   ['SCIM', 'https://api.slack.com/scim/v2'],
@@ -261,8 +261,8 @@ export function App() {
         </a>
         <div className="bar">
           <p>
-            Diagnostics for OIDC, SAML SSO, and SCIM that say what was verified and what was only
-            read.
+            Diagnostics for OIDC, OAuth 2.0, SAML SSO, and SCIM that say what was verified and what
+            was only read.
           </p>
           <button
             type="button"
@@ -293,7 +293,7 @@ export function App() {
           value={input}
           rows={pastedXml ? 8 : pastedToken ? 5 : 1}
           spellCheck={false}
-          placeholder="OIDC issuer or token, SAML metadata or response, or SCIM base URL"
+          placeholder="OIDC issuer or token, OAuth server, SAML metadata or response, or SCIM base URL"
           onChange={(event) => setInput(event.target.value)}
           onKeyDown={(event) => {
             if (event.key === 'Enter' && !event.shiftKey && !pastedXml) {
@@ -318,7 +318,7 @@ export function App() {
         <div className="controls">
           <fieldset className="segmented">
             <legend>Protocol</legend>
-            {(['auto', 'oidc', 'saml', 'scim'] as const).map((option) => (
+            {(['auto', 'oauth', 'oidc', 'saml', 'scim'] as const).map((option) => (
               <label key={option}>
                 <input
                   type="radio"

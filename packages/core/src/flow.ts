@@ -1,3 +1,4 @@
+import { metadataOf } from './checks/oidc.js';
 import { MD } from './checks/saml.js';
 import type { FlowStep, Workspace } from './model.js';
 import { descendants, json, xml } from './parse.js';
@@ -21,9 +22,50 @@ export function flowFor(workspace: Workspace): FlowStep[] {
   const { protocol } = workspace.target;
   const find = (kind: string) => workspace.evidence.find((e) => e.kind === kind);
 
-  if (protocol === 'oidc') {
-    const discovery = find('oidc.discovery');
-    const doc = (discovery && json(discovery)) ?? {};
+  if (protocol === 'oidc' || protocol === 'oauth') {
+    const metadata = metadataOf(workspace);
+    const doc = (metadata && json(metadata)) ?? {};
+    if (protocol === 'oauth') {
+      // No ID token and no UserInfo: the client gets an access token, and the API it calls checks it.
+      return illustrate([
+        {
+          id: 'authorize',
+          from: 'Browser',
+          to: 'AS',
+          label: 'Authorization request with code_challenge',
+          endpoint: doc.authorization_endpoint,
+          concerns: ['oauth.metadata.pkce', 'oauth.metadata.implicit'],
+        },
+        {
+          id: 'redirect',
+          from: 'AS',
+          to: 'Client',
+          label: 'Redirect with code and state',
+          concerns: ['oauth.metadata.iss-parameter'],
+        },
+        {
+          id: 'token',
+          from: 'Client',
+          to: 'AS',
+          label: 'Token request with code_verifier',
+          endpoint: doc.token_endpoint,
+          concerns: ['oauth.metadata.password-grant'],
+        },
+        // Without published keys the access token is opaque, and no step here could verify it.
+        ...(typeof doc.jwks_uri === 'string'
+          ? [
+              {
+                id: 'keys',
+                from: 'API',
+                to: 'AS',
+                label: 'Fetch keys and verify the access token',
+                endpoint: doc.jwks_uri,
+                concerns: ['oidc.jwks', 'oidc.token', 'oidc.access-token', 'oauth.metadata.issuer'],
+              },
+            ]
+          : []),
+      ]);
+    }
     return illustrate([
       {
         id: 'authorize',

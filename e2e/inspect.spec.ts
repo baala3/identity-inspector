@@ -1,5 +1,7 @@
 import { execFile } from 'node:child_process';
 import { writeFile } from 'node:fs/promises';
+import { createServer } from 'node:http';
+import type { AddressInfo } from 'node:net';
 import { promisify } from 'node:util';
 import { expect, type Page, test } from '@playwright/test';
 
@@ -104,6 +106,62 @@ test('reports an unreachable target instead of failing', async ({ page }) => {
   await expect(page.locator('.overview .unread')).toContainText(
     'http://localhost:9/realms/none/.well-known/openid-configuration',
   );
+});
+
+test('judges a server with no OpenID configuration as an OAuth authorization server', async ({
+  page,
+}) => {
+  // A plain authorization server: RFC 8414 metadata and nothing at the OpenID path.
+  const server = createServer((request, response) => {
+    const { port } = server.address() as AddressInfo;
+    const issuer = `http://localhost:${port}`;
+    if (request.url !== '/.well-known/oauth-authorization-server') {
+      response.writeHead(404, { 'content-type': 'text/html' }).end('<h1>Not Found</h1>');
+      return;
+    }
+    response.writeHead(200, { 'content-type': 'application/json' }).end(
+      JSON.stringify({
+        issuer,
+        authorization_endpoint: `${issuer}/authorize`,
+        token_endpoint: `${issuer}/token`,
+        response_types_supported: ['code'],
+        grant_types_supported: ['authorization_code', 'refresh_token'],
+        code_challenge_methods_supported: ['S256'],
+      }),
+    );
+  });
+  await new Promise<void>((resolve) => server.listen(0, resolve));
+  const issuer = `http://localhost:${(server.address() as AddressInfo).port}`;
+  try {
+    await inspect(page, issuer);
+
+    await expect(page.locator('.results-head h2')).toHaveText(`OAUTH ${issuer}`);
+    await expect(finding(page, 'oauth.metadata.openid-discovery')).toContainText(
+      'consistent for a plain OAuth 2.0 authorization server',
+    );
+    await expect(finding(page, 'oauth.metadata.issuer-form')).toContainText('scheme is http');
+    await expect(finding(page, 'oauth.metadata.issuer-form')).toContainText(
+      'If you run the authorization server',
+    );
+    await page.screenshot({
+      fullPage: true,
+    });
+    await expect(finding(page, 'oauth.metadata.pkce-s256')).toContainText('S256 is advertised');
+    // Nothing here is an OpenID Provider, so nothing is held to the rules for one.
+    await expect(page.locator('.finding', { hasText: 'oidc.discovery.' })).toHaveCount(0);
+
+    // No keys are published, so the flow stops at the token: there is no ID token to verify.
+    await expect(page.locator('.flow .step')).toHaveCount(3);
+    await expect(page.locator('.flow .lane-name')).toHaveText(['Browser', 'Client', 'AS']);
+
+    await page.getByRole('tab', { name: 'What it publishes' }).click();
+    await expect(page.locator('.overview')).toContainText('Authorization server');
+    await expect(page.locator('.overview')).toContainText(
+      `${issuer}/.well-known/oauth-authorization-server`,
+    );
+  } finally {
+    server.close();
+  }
 });
 
 test('opens a shared link straight into its report', async ({ page }) => {
@@ -420,7 +478,7 @@ test('returns to the empty home screen from the brand', async ({ page }) => {
 test('offers a public target to try for every protocol', async ({ page }) => {
   await page.goto('/');
   const kinds = await page.locator('.examples .tag').allInnerTexts();
-  expect(new Set(kinds)).toEqual(new Set(['OIDC', 'SAML', 'SCIM']));
+  expect(new Set(kinds)).toEqual(new Set(['OIDC', 'OAUTH', 'SAML', 'SCIM']));
 
   // Choosing one fills the target and names it in a link that can be shared.
   await page.getByRole('button', { name: /api\.slack\.com\/scim\/v2/ }).click();

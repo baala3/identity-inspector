@@ -10,6 +10,7 @@ import {
 } from '../jwt.js';
 import type { Check, CheckContext, Citation, Evidence, Outcome } from '../model.js';
 import { type Json, json, objects, strings } from '../parse.js';
+import { metadataOf } from './oidc.js';
 
 const CORE = (anchor: string, section: string): Citation => ({
   label: `OpenID Connect Core 1.0, section ${section}`,
@@ -355,12 +356,12 @@ export const tokenChecks: Check[] = [
     title: 'Issuer claim',
     citation: VALIDATION,
     remediation: {
-      op: 'Put exactly the issuer from the discovery document in the "iss" claim.',
-      rp: 'Compare "iss" with the discovery issuer character for character, and use the discovery URL of your own tenant.',
+      op: 'Put exactly the issuer you publish in the "iss" claim.',
+      rp: 'Compare "iss" with the published issuer character for character, and use the issuer of your own tenant.',
     },
     run: onToken((token, evidence, ctx) => {
-      const discovery = find(ctx, 'oidc.discovery');
-      const issuer = (discovery && json(discovery))?.issuer;
+      const metadata = metadataOf(ctx.workspace);
+      const issuer = (metadata && json(metadata))?.issuer;
       const { iss } = token.claims;
       if (typeof iss !== 'string' || typeof issuer !== 'string') return undefined;
       const pointer = '/payload/iss';

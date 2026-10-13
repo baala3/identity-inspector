@@ -1,8 +1,8 @@
 // Vocabulary here follows CONTEXT.md at the repo root.
 
-export type Protocol = 'oidc' | 'saml' | 'scim';
+export type Protocol = 'oidc' | 'oauth' | 'saml' | 'scim';
 
-export type Role = 'op' | 'rp' | 'idp' | 'sp' | 'scim-server' | 'scim-client';
+export type Role = 'op' | 'rp' | 'as' | 'client' | 'idp' | 'sp' | 'scim-server' | 'scim-client';
 
 export type Category = 'conformance' | 'security' | 'interop';
 
@@ -12,6 +12,7 @@ export type Provenance = 'discovered' | 'illustrative' | 'executed' | 'user-supp
 
 export type EvidenceKind =
   | 'oidc.discovery'
+  | 'oauth.metadata'
   | 'oidc.jwks'
   | 'oidc.token'
   | 'saml.metadata'
@@ -88,7 +89,8 @@ export interface CheckContext {
 
 export interface Check {
   id: string;
-  protocol: Protocol;
+  /** More than one where the same rule binds targets of several protocols. */
+  protocol: Protocol | readonly Protocol[];
   category: Category;
   title: string;
   citation: Citation;

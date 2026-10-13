@@ -1,6 +1,6 @@
 # Identity Inspector
 
-A diagnostics tool for OIDC, SAML SSO, and SCIM integrations.
+A diagnostics tool for OIDC, OAuth 2.0, SAML SSO, and SCIM integrations.
 It exists to tell an engineer what is actually wrong with an integration, and to be explicit about which claims were verified and which were only read from a document.
 
 ## Language
@@ -8,11 +8,12 @@ It exists to tell an engineer what is actually wrong with an integration, and to
 ### Subjects
 
 **Protocol**:
-One of OIDC, SAML, or SCIM.
+One of OIDC, OAuth, SAML, or SCIM.
+A target that publishes an OpenID configuration is OIDC; OAuth is a server that publishes only authorization server metadata, or one the user asks to have judged that way.
 _Avoid_: Standard, integration type
 
 **Role**:
-The part a party plays in a protocol: OpenID Provider, Relying Party, SAML Identity Provider, SAML Service Provider, SCIM Server, or SCIM Client.
+The part a party plays in a protocol: OpenID Provider, Relying Party, Authorization Server, Client, SAML Identity Provider, SAML Service Provider, SCIM Server, or SCIM Client.
 The SCIM Server is hosted by the application and the SCIM Client is the directory that provisions into it.
 _Avoid_: Side, direction, IdP as a catch-all for every server-side role
 
@@ -27,7 +28,7 @@ _Avoid_: Quirk list, vendor plugin, preset
 ### Inputs
 
 **Evidence**:
-A single artifact about a target: a discovery document, a key set, a metadata document, a token, an assertion, a request, or a response.
+A single artifact about a target: a discovery document, authorization server metadata, a key set, a metadata document, a token, an assertion, a request, or a response.
 _Avoid_: Input, payload, sample
 
 **Workspace**:

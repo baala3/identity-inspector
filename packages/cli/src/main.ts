@@ -16,21 +16,21 @@ import {
 
 const USAGE = `Usage: idi inspect <target> [options]
 
-<target> is an OIDC issuer or domain, a file holding an ID token or a JWT
-access token, a SAML metadata URL or XML file, a file holding a SAML
-response (XML or base64), or a SCIM base URL.
+<target> is an OIDC issuer or domain, an OAuth 2.0 authorization server, a
+file holding an ID token or a JWT access token, a SAML metadata URL or XML
+file, a file holding a SAML response (XML or base64), or a SCIM base URL.
 
 Options:
-  --protocol <oidc|saml|scim>   Skip detection
-  --format <text|json|md>       Output format (default text)
-  --fail-on <error|warn|never>  Exit 1 at this severity or worse (default error)
-  --at <ISO date>               Evaluation instant (default now)
-  --metadata <url|file>         IdP metadata to verify a SAML response against
-  --all                         Also list passing checks in text output
-  --overview                    Also list what the target publishes in text output
+  --protocol <oidc|oauth|saml|scim>  Skip detection
+  --format <text|json|md>            Output format (default text)
+  --fail-on <error|warn|never>       Exit 1 at this severity or worse (default error)
+  --at <ISO date>                    Evaluation instant (default now)
+  --metadata <url|file>              IdP metadata to verify a SAML response against
+  --all                              Also list passing checks in text output
+  --overview                         Also list what the target publishes in text output
 
 Environment:
-  SCIM_TOKEN                    Bearer token sent to SCIM endpoints only
+  SCIM_TOKEN                         Bearer token sent to SCIM endpoints only
 `;
 
 const fetcher: Fetcher = async (url, headers = {}) => {
@@ -120,7 +120,7 @@ async function main(): Promise<number> {
     process.stderr.write(USAGE);
     return values.help ? 0 : 2;
   }
-  if (values.protocol && !['oidc', 'saml', 'scim'].includes(values.protocol)) {
+  if (values.protocol && !['oidc', 'oauth', 'saml', 'scim'].includes(values.protocol)) {
     process.stderr.write(`Unknown protocol "${values.protocol}".\n`);
     return 2;
   }
