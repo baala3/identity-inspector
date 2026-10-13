@@ -12,6 +12,7 @@ import {
   type Severity,
   summaryLine,
   toMarkdown,
+  type Workspace,
 } from '@identity-inspector/core';
 
 const USAGE = `Usage: idi inspect <target> [options]
@@ -137,15 +138,22 @@ async function main(): Promise<number> {
 
   const input = existsSync(target) ? readFileSync(target, 'utf8') : target;
   const token = process.env.SCIM_TOKEN;
-  const workspace = await collect(input, fetcher, {
-    ...(values.protocol && { protocol: values.protocol as Protocol }),
-    ...(token && { scimHeaders: { authorization: `Bearer ${token}` } }),
-    ...(values.metadata && {
-      samlMetadata: existsSync(values.metadata)
-        ? readFileSync(values.metadata, 'utf8')
-        : values.metadata,
-    }),
-  });
+  let workspace: Workspace;
+  try {
+    workspace = await collect(input, fetcher, {
+      ...(values.protocol && { protocol: values.protocol as Protocol }),
+      ...(token && { scimHeaders: { authorization: `Bearer ${token}` } }),
+      ...(values.metadata && {
+        samlMetadata: existsSync(values.metadata)
+          ? readFileSync(values.metadata, 'utf8')
+          : values.metadata,
+      }),
+    });
+  } catch (error) {
+    // A target that cannot be inspected as asked is a mistake in the command, not a crash.
+    process.stderr.write(`${error instanceof Error ? error.message : String(error)}\n`);
+    return 2;
+  }
   const report = await evaluate(workspace, instant);
 
   const rendered =
