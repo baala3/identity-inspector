@@ -131,6 +131,33 @@ test('restates what the target publishes on its own tab, without verdicts', asyn
   await expect(page.locator('.finding').first()).toBeVisible();
 });
 
+test('a severity chip shows that severity alone until it is pressed again', async ({ page }) => {
+  await inspect(page, REALM);
+  const all = await page.locator('.finding').count();
+  const pass = page.getByRole('button', { name: /\d+ pass$/ });
+
+  await pass.click();
+  await expect(pass).toHaveAttribute('aria-pressed', 'true');
+  await expect(page.locator('.finding .badge.pass').first()).toBeVisible();
+  await expect(page.locator('.finding .badge:not(.pass)')).toHaveCount(0);
+
+  // Choosing another severity replaces the first instead of adding to it.
+  await page.getByRole('button', { name: /\d+ warn$/ }).click();
+  await expect(pass).toHaveAttribute('aria-pressed', 'false');
+  await expect(page.locator('.finding .badge:not(.warn)')).toHaveCount(0);
+
+  await page.getByRole('button', { name: /\d+ warn$/ }).click();
+  await expect(page.locator('.finding')).toHaveCount(all);
+});
+
+test('shows fetched evidence indented with its member names set apart', async ({ page }) => {
+  await inspect(page, REALM);
+  const evidence = page.locator('.evidence').first();
+  await evidence.locator('summary').click();
+  await expect(evidence.locator('pre b').first()).toHaveText('"issuer"');
+  await expect(evidence.locator('pre')).toContainText(`"issuer": "${REALM}"`);
+});
+
 test('starts light whatever the system prefers, and remembers a switch to dark', async ({
   browser,
 }) => {
