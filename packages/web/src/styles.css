@@ -434,10 +434,42 @@ footer::before {
   outline-offset: 3px;
 }
 
+/*
+  An empty instant means now. A phone draws an empty date field as a blank stub, so the
+  field holds its own width and says what leaving it empty means.
+*/
+.as-of {
+  position: relative;
+}
+
 .as-of input {
+  min-width: 24ch;
+  appearance: none;
   color-scheme: dark;
   font-family: var(--mono);
   font-weight: 500;
+  text-align: left;
+}
+
+.as-of input::-webkit-date-and-time-value {
+  text-align: left;
+}
+
+.as-of[data-empty]:not(:focus-within) input {
+  color: transparent;
+}
+
+.as-of[data-empty]:not(:focus-within)::after {
+  content: "Now";
+  position: absolute;
+  bottom: 0;
+  left: 18px;
+  color: var(--white);
+  font-family: var(--mono);
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 38px;
+  pointer-events: none;
 }
 
 /* The one yellow action. The knob behind the arrow grows into a fill on hover. */

@@ -532,3 +532,23 @@ test('keeps the example targets inside their card on a phone', async ({ page }) 
   }
   expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(390);
 });
+
+test('shows the evaluation instant as a full field that reads Now until one is chosen', async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 390, height: 800 });
+  await page.goto('/');
+  const field = page.getByLabel('Evaluate as of');
+  const hint = () =>
+    page.locator('.as-of').evaluate((label) => getComputedStyle(label, '::after').content);
+
+  // A phone draws an empty date field as a blank stub unless the field holds its own width.
+  expect(
+    await field.evaluate((input) => Number.parseFloat(getComputedStyle(input).minWidth)),
+  ).toBeGreaterThan(180);
+  expect(await hint()).toBe('"Now"');
+
+  await field.fill('2099-01-01T00:00');
+  expect(await hint()).toBe('none');
+  expect(await field.evaluate((input) => getComputedStyle(input).color)).toBe('rgb(255, 255, 255)');
+});
