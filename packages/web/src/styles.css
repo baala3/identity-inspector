@@ -543,6 +543,12 @@ footer::before {
   vertical-align: 0.5em;
 }
 
+.tag.solid.kind {
+  background: var(--yellow);
+  color: var(--panel-ink);
+  text-transform: uppercase;
+}
+
 .tag.provenance {
   box-shadow: inset 0 0 0 1px currentColor;
 }

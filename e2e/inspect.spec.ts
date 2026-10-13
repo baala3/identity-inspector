@@ -153,8 +153,12 @@ test('verifies a pasted ID token against the keys its issuer publishes', async (
   const requested: string[] = [];
   page.context().on('request', (request) => requested.push(request.url()));
 
+  await page.goto('/');
+  await page.getByLabel('Target').fill(token);
+  await expect(page.locator('.trust')).toContainText('This ID token is read in this browser');
+
   await inspect(page, token);
-  await expect(page.locator('.results-head h2')).toHaveText(`OIDC ${REALM}`);
+  await expect(page.locator('.results-head h2')).toHaveText(`OIDC ID token ${REALM}`);
   await expect(finding(page, 'oidc.token.signature').locator('.badge')).toHaveText('pass');
   await expect(finding(page, 'oidc.token.signature')).toContainText('verifies with RS256');
   await expect(finding(page, 'oidc.token.issuer').locator('.badge')).toHaveText('pass');
@@ -174,6 +178,7 @@ test('verifies a pasted ID token against the keys its issuer publishes', async (
 
 test('judges a pasted access token as one, by its own rules', async ({ page }) => {
   await inspect(page, (await tokens()).access_token);
+  await expect(page.locator('.results-head h2')).toHaveText(`OIDC access token ${REALM}`);
   await expect(finding(page, 'oidc.token.kind')).toContainText('judged as an access token');
   await expect(finding(page, 'oidc.token.signature').locator('.badge')).toHaveText('pass');
   await expect(finding(page, 'oidc.access-token.required-claims')).toBeVisible();

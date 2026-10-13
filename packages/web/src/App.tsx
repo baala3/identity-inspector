@@ -1,5 +1,7 @@
 import {
   type Finding,
+  KIND_LABEL,
+  kindOf,
   looksLikeJwt,
   looksLikeXml,
   type OverviewSection,
@@ -73,6 +75,12 @@ function members(value: unknown, key: string): ReactNode[] {
   }
   parts.push(json.slice(at));
   return parts;
+}
+
+/** What a pasted token is taken for, or nothing when the text is not a readable token. */
+function tokenKind(text: string | undefined): string | undefined {
+  const { jwt } = text && looksLikeJwt(text) ? parseJwt(text) : {};
+  return jwt && KIND_LABEL[kindOf(jwt).kind];
 }
 
 /** Evidence as it was received: JSON indented, and a token opened into its header and payload. */
@@ -228,6 +236,8 @@ export function App() {
     ) ?? [];
   const pastedXml = looksLikeXml(input);
   const pastedToken = looksLikeJwt(input);
+  const pastedKind = tokenKind(input) ?? 'token';
+  const inspectedKind = tokenKind(result?.raw['oidc.token']);
 
   return (
     <div className="page">
@@ -319,7 +329,7 @@ export function App() {
           {pastedXml
             ? 'Pasted XML is parsed in this browser and is not sent anywhere.'
             : pastedToken
-              ? 'The token is read in this browser and is not sent anywhere. Only the issuer it names is asked for its public documents.'
+              ? `This ${pastedKind} is read in this browser and is not sent anywhere. Only the issuer it names is asked for its public documents.`
               : 'URLs are fetched by a proxy that accepts a URL and nothing else. Credentials are never requested here.'}
         </p>
       </form>
@@ -364,6 +374,7 @@ export function App() {
             <div>
               <h2>
                 <span className="tag solid">{report.target.protocol.toUpperCase()}</span>{' '}
+                {inspectedKind && <span className="tag solid kind">{inspectedKind}</span>}{' '}
                 {report.target.input}
               </h2>
               <p className="muted">Evaluated as of {new Date(report.instant).toLocaleString()}</p>
