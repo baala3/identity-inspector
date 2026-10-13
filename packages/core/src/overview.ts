@@ -66,7 +66,10 @@ function oidc(
   const keys = objects((jwks && json(jwks))?.keys);
   const parsed = token && jwt(token).jwt;
   const { header = {}, claims = {} } = parsed ?? {};
-  const scopes = typeof claims.scope === 'string' ? claims.scope.split(' ') : strings(claims.scp);
+  // Providers write scopes as a space-separated string or as a list, under either name.
+  const listed = (value: unknown) =>
+    typeof value === 'string' ? value.split(' ').filter(Boolean) : strings(value);
+  const scopes = [...listed(claims.scope), ...listed(claims.scp)];
   return [
     ...section('token', parsed ? `Pasted ${KIND_LABEL[kindOf(parsed).kind]}` : 'Pasted token', [
       ...text('Type', header.typ),

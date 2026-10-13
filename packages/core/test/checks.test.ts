@@ -753,6 +753,11 @@ describe('overview', () => {
     });
   });
 
+  it('reads scopes written as a list as well as a string', async () => {
+    const token = await signed({ ...ACCESS_CLAIMS, scope: ['read', 'write'] });
+    expect(await facts(withToken(token))).toMatchObject({ 'token/Scopes': ['read', 'write'] });
+  });
+
   it('judges an access token by its own rules, not by those for ID tokens', async () => {
     const ids = (await evaluate(withToken(ACCESS_TOKEN), NOW)).findings.map((f) => f.checkId);
     expect(ids).toContain('oidc.access-token.required-claims');
