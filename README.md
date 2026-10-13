@@ -45,9 +45,12 @@ pnpm dev
 ```
 
 URLs are fetched through a proxy that accepts a URL and nothing else, and refuses anything that is not a public host.
+Pasted material is never taken for a URL: under a protocol that cannot read it, it is refused and sent nowhere, here and in the CLI.
 Pasted XML is parsed in the browser and is never sent.
 A pasted ID token or JWT access token is read and verified in the browser too; only the issuer it names is asked for its public documents.
 A pasted SAML response is read and verified in the browser as well, and a second field takes the IdP metadata as a URL or as XML.
+Choosing a protocol shapes the form to it: the hint in the target field says what that protocol takes, and SAML offers the IdP metadata field before anything is pasted.
+The evaluation instant is offered only where something is judged at one, which is OIDC, SAML, and detection.
 Set `IDI_ALLOW_PRIVATE=1` to let the local proxy reach a target on your own machine.
 
 ## Status

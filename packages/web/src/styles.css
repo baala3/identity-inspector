@@ -351,6 +351,11 @@ footer::before {
   line-height: 22px;
 }
 
+.target textarea:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
 .target textarea::placeholder {
   color: #586078;
   /* A one-row field shows one row of hint, cut short where the screen is narrow. */
@@ -1395,10 +1400,15 @@ footer {
     vertical-align: 0.25em;
   }
 
+  /* The arrow stays on its knob at the left; the label is centred in the whole button. */
   .target button[type="submit"] {
     width: 100%;
-    justify-content: center;
-    padding-right: 40px;
+    padding-right: 48px;
+  }
+
+  .target button[type="submit"] > span:last-child {
+    flex: 1;
+    text-align: center;
   }
 
   .empty > div,

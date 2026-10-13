@@ -12,7 +12,24 @@ function fetched(kind: EvidenceKind, result: FetchResult): Evidence {
 const WELL_KNOWN = '/.well-known/openid-configuration';
 const OAUTH_WELL_KNOWN = '/.well-known/oauth-authorization-server';
 
+/** What pasted material is, or nothing when the input is somewhere to fetch from. */
+function pastedKind(input: string): string | undefined {
+  if (looksLikeJwt(input)) return 'token';
+  if (samlMessage(input)) return 'SAML response';
+  return looksLikeXml(input) ? 'XML document' : undefined;
+}
+
+/**
+ * The URL an input names. Pasted material is refused here, where every request begins,
+ * so that no choice of protocol can send it out as though it were a hostname.
+ */
 function asUrl(input: string): string {
+  const kind = pastedKind(input);
+  if (kind) {
+    throw new Error(
+      `A pasted ${kind} was given where a URL is expected. Leave the protocol to detection, or give a URL. It was not sent anywhere.`,
+    );
+  }
   const trimmed = input.trim();
   return /^https?:\/\//i.test(trimmed) ? trimmed : `https://${trimmed}`;
 }
