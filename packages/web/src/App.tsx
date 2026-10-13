@@ -32,8 +32,6 @@ const PROXY = import.meta.env.VITE_PROXY_URL ?? '/api';
 const EXAMPLES = [
   ['OIDC', 'accounts.google.com'],
   ['OIDC', 'https://login.microsoftonline.com/common/v2.0'],
-  ['OIDC', 'appleid.apple.com'],
-  ['OIDC', 'gitlab.com'],
   ['SAML', 'https://mocksaml.com/api/saml/metadata'],
   ['SCIM', 'https://api.slack.com/scim/v2'],
 ] as const;
