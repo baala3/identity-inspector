@@ -353,7 +353,7 @@ export function App() {
             ))}
           </fieldset>
           {timeBounded && (
-            <label className="as-of">
+            <label className="as-of" data-empty={at ? undefined : ''}>
               <span>Evaluate as of</span>
               <input
                 type="datetime-local"
