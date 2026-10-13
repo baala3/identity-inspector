@@ -12,6 +12,7 @@ import {
   type Role,
   roleLabel,
   type Severity,
+  samlMessage,
   toMarkdown,
 } from '@identity-inspector/core';
 import {
@@ -53,7 +54,8 @@ interface Result {
 }
 
 /** Pasted material is read in this browser and never becomes part of a link. */
-const isPasted = (input: string) => looksLikeXml(input) || looksLikeJwt(input);
+const isResponse = (input: string) => samlMessage(input) !== undefined;
+const isPasted = (input: string) => looksLikeXml(input) || looksLikeJwt(input) || isResponse(input);
 
 function download(name: string, type: string, text: string) {
   const link = document.createElement('a');
@@ -150,6 +152,7 @@ export function App() {
     (params.get('protocol') as Protocol | null) ?? 'auto',
   );
   const [at, setAt] = useState(params.get('at') ?? '');
+  const [metadata, setMetadata] = useState('');
   const [status, setStatus] = useState<Status>({ state: 'idle' });
   const [result, setResult] = useState<Result>();
   const [only, setOnly] = useState<Severity>();
@@ -175,29 +178,33 @@ export function App() {
     return () => instance.terminate();
   }, []);
 
-  const inspect = useCallback((target: string, as: Protocol | 'auto', when: string) => {
-    const trimmed = target.trim();
-    if (!trimmed) return;
-    const instant = when ? new Date(when) : undefined;
-    const request: InspectRequest = {
-      id: ++latest.current,
-      input: trimmed,
-      proxy: PROXY,
-      ...(as !== 'auto' && { protocol: as }),
-      ...(instant && !Number.isNaN(instant.getTime()) && { at: instant.toISOString() }),
-    };
-    setStatus({ state: 'loading' });
-    worker.current?.postMessage(request);
+  const inspect = useCallback(
+    (target: string, as: Protocol | 'auto', when: string, idpMetadata = '') => {
+      const trimmed = target.trim();
+      if (!trimmed) return;
+      const instant = when ? new Date(when) : undefined;
+      const request: InspectRequest = {
+        id: ++latest.current,
+        input: trimmed,
+        proxy: PROXY,
+        ...(as !== 'auto' && { protocol: as }),
+        ...(isResponse(trimmed) && idpMetadata.trim() && { metadata: idpMetadata.trim() }),
+        ...(instant && !Number.isNaN(instant.getTime()) && { at: instant.toISOString() }),
+      };
+      setStatus({ state: 'loading' });
+      worker.current?.postMessage(request);
 
-    // Only a public target makes a shareable link; pasted material stays out of the URL.
-    const link = new URLSearchParams();
-    if (!isPasted(trimmed)) {
-      link.set('target', trimmed);
-      if (as !== 'auto') link.set('protocol', as);
-      if (when) link.set('at', when);
-    }
-    history.replaceState(null, '', link.size ? `?${link}` : location.pathname);
-  }, []);
+      // Only a public target makes a shareable link; pasted material stays out of the URL.
+      const link = new URLSearchParams();
+      if (!isPasted(trimmed)) {
+        link.set('target', trimmed);
+        if (as !== 'auto') link.set('protocol', as);
+        if (when) link.set('at', when);
+      }
+      history.replaceState(null, '', link.size ? `?${link}` : location.pathname);
+    },
+    [],
+  );
 
   // A link that names a target runs it on arrival.
   useEffect(() => {
@@ -225,7 +232,7 @@ export function App() {
 
   const submit = (event: FormEvent) => {
     event.preventDefault();
-    inspect(input, protocol, at);
+    inspect(input, protocol, at, metadata);
   };
 
   const report = result?.report;
@@ -234,10 +241,13 @@ export function App() {
     report?.findings.filter(
       (f) => (!only || f.severity === only) && (!selected || concerns(selected, f)),
     ) ?? [];
-  const pastedXml = looksLikeXml(input);
+  const pastedResponse = isResponse(input);
+  // Metadata is the only XML that is not a response; both need room and keep Enter for new lines.
+  const pastedXml = looksLikeXml(input) || pastedResponse;
   const pastedToken = looksLikeJwt(input);
   const pastedKind = tokenKind(input) ?? 'token';
-  const inspectedKind = tokenKind(result?.raw['oidc.token']);
+  const inspectedKind =
+    tokenKind(result?.raw['oidc.token']) ?? (result?.raw['saml.response'] ? 'response' : undefined);
 
   return (
     <div className="page">
@@ -284,15 +294,28 @@ export function App() {
           value={input}
           rows={pastedXml ? 8 : pastedToken ? 5 : 1}
           spellCheck={false}
-          placeholder="OIDC issuer or token, SAML metadata URL or XML, or SCIM base URL"
+          placeholder="OIDC issuer or token, SAML metadata or response, or SCIM base URL"
           onChange={(event) => setInput(event.target.value)}
           onKeyDown={(event) => {
             if (event.key === 'Enter' && !event.shiftKey && !pastedXml) {
               event.preventDefault();
-              inspect(input, protocol, at);
+              inspect(input, protocol, at, metadata);
             }
           }}
         />
+        {pastedResponse && (
+          <>
+            <label htmlFor="metadata">IdP metadata (optional)</label>
+            <textarea
+              id="metadata"
+              value={metadata}
+              rows={looksLikeXml(metadata) ? 6 : 1}
+              spellCheck={false}
+              placeholder="Metadata URL or XML. It is what shows who signed the response."
+              onChange={(event) => setMetadata(event.target.value)}
+            />
+          </>
+        )}
         <div className="controls">
           <fieldset className="segmented">
             <legend>Protocol</legend>
@@ -326,11 +349,13 @@ export function App() {
           </button>
         </div>
         <p className="trust">
-          {pastedXml
-            ? 'Pasted XML is parsed in this browser and is not sent anywhere.'
-            : pastedToken
-              ? `This ${pastedKind} is read in this browser and is not sent anywhere. Only the issuer it names is asked for its public documents.`
-              : 'URLs are fetched by a proxy that accepts a URL and nothing else. Credentials are never requested here.'}
+          {pastedResponse
+            ? 'The response is read in this browser and is not sent anywhere. Metadata given as a URL is fetched by the proxy; pasted metadata stays here too.'
+            : pastedXml
+              ? 'Pasted XML is parsed in this browser and is not sent anywhere.'
+              : pastedToken
+                ? `This ${pastedKind} is read in this browser and is not sent anywhere. Only the issuer it names is asked for its public documents.`
+                : 'URLs are fetched by a proxy that accepts a URL and nothing else. Credentials are never requested here.'}
         </p>
       </form>
 

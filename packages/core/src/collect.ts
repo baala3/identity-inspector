@@ -1,6 +1,8 @@
+import { issuerOf, message } from './checks/saml-response.js';
 import { looksLikeJwt, parseJwt } from './jwt.js';
 import type { Evidence, EvidenceKind, Fetcher, FetchResult, Protocol, Workspace } from './model.js';
 import { json, parseXml } from './parse.js';
+import { decodeBase64 } from './x509.js';
 
 function fetched(kind: EvidenceKind, result: FetchResult): Evidence {
   const { url, body, ...fetch } = result;
@@ -46,19 +48,63 @@ export async function collectOidc(input: string, fetcher: Fetcher): Promise<Work
 
 export const looksLikeXml = (input: string) => input.trimStart().startsWith('<');
 
-export async function collectSaml(input: string, fetcher: Fetcher): Promise<Workspace> {
-  if (looksLikeXml(input)) {
+// The root element, past any declaration, comment, or DTD. A DTD is refused later, by name.
+const MESSAGE_ROOT =
+  /^\s*(?:<\?[\s\S]*?\?>\s*|<!--[\s\S]*?-->\s*|<!DOCTYPE[^[>]*(?:\[[\s\S]*?\])?\s*>\s*)*<(?:[\w.-]+:)?(?:Response|Assertion)[\s>]/;
+const BASE64 = /^[A-Za-z0-9+/=%\s]{100,}$/;
+
+/**
+ * The XML of a pasted SAML Response or Assertion, or nothing when the input is not one.
+ * A response is usually copied from the browser as the base64 text of the SAMLResponse
+ * form field, sometimes still URL-encoded, so that form is accepted as well as XML.
+ */
+export function samlMessage(input: string): string | undefined {
+  const pasted = input.trim();
+  if (MESSAGE_ROOT.test(pasted)) return pasted;
+  if (!BASE64.test(pasted)) return undefined;
+  try {
+    const decoded = new TextDecoder('utf-8', { fatal: true }).decode(
+      decodeBase64(decodeURIComponent(pasted)),
+    );
+    return MESSAGE_ROOT.test(decoded) ? decoded.trim() : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+/** Metadata from wherever it was given: pasted XML, or a URL to fetch. */
+async function metadataFrom(input: string, fetcher: Fetcher): Promise<Evidence> {
+  return looksLikeXml(input)
+    ? { id: 'saml.metadata', kind: 'saml.metadata', provenance: 'user-supplied', raw: input }
+    : fetched('saml.metadata', await fetcher(asUrl(input)));
+}
+
+export async function collectSaml(
+  input: string,
+  fetcher: Fetcher,
+  metadata?: string,
+): Promise<Workspace> {
+  const pasted = samlMessage(input);
+  if (pasted) {
+    const response: Evidence = {
+      id: 'saml.response',
+      kind: 'saml.response',
+      provenance: 'user-supplied',
+      raw: pasted,
+    };
+    const read = message(response);
     return {
-      target: { protocol: 'saml', input: 'pasted metadata' },
-      evidence: [
-        { id: 'saml.metadata', kind: 'saml.metadata', provenance: 'user-supplied', raw: input },
-      ],
+      target: { protocol: 'saml', input: (read && issuerOf(read)) ?? 'pasted response' },
+      // The response itself is never sent anywhere. Metadata is fetched only when a URL was given for it.
+      evidence: metadata?.trim()
+        ? [response, await metadataFrom(metadata.trim(), fetcher)]
+        : [response],
     };
   }
-  const url = asUrl(input);
+  const evidence = await metadataFrom(input, fetcher);
   return {
-    target: { protocol: 'saml', input: url },
-    evidence: [fetched('saml.metadata', await fetcher(url))],
+    target: { protocol: 'saml', input: evidence.source ?? 'pasted metadata' },
+    evidence: [evidence],
   };
 }
 
@@ -88,6 +134,8 @@ export async function collectScim(
 
 export interface CollectOptions {
   protocol?: Protocol;
+  /** Where the IdP metadata for a pasted SAML response is: a URL, or the XML itself. */
+  samlMetadata?: string;
   /** Sent only to SCIM endpoints. Never pass a credential through the proxy (ADR 0001). */
   scimHeaders?: Record<string, string>;
 }
@@ -99,7 +147,7 @@ export async function collect(
   options: CollectOptions = {},
 ): Promise<Workspace> {
   const protocol = options.protocol ?? (await detect(input, fetcher));
-  if (protocol === 'saml') return collectSaml(input, fetcher);
+  if (protocol === 'saml') return collectSaml(input, fetcher, options.samlMetadata);
   if (protocol === 'scim') return collectScim(input, fetcher, options.scimHeaders);
   return collectOidc(input, fetcher);
 }
@@ -108,7 +156,7 @@ const SAML_PATH = /saml|metadata|\.xml$/i;
 const SCIM_PATH = /\/scim(\/|$)|\/(ServiceProviderConfig|ResourceTypes|Schemas)\/?$/i;
 
 export async function detect(input: string, fetcher: Fetcher): Promise<Protocol> {
-  if (looksLikeXml(input)) return 'saml';
+  if (looksLikeXml(input) || samlMessage(input)) return 'saml';
   if (looksLikeJwt(input)) return 'oidc';
   const url = asUrl(input);
   if (url.includes(WELL_KNOWN)) return 'oidc';

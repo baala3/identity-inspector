@@ -96,14 +96,26 @@ export function flowFor(workspace: Workspace): FlowStep[] {
         to: 'SP',
         label: 'Signed Response posted to the ACS',
         endpoint: location('AssertionConsumerService'),
-        concerns: ['saml.sp', 'saml.metadata.nameid-formats'],
+        concerns: [
+          'saml.sp',
+          'saml.metadata.nameid-formats',
+          'saml.response.well-formed',
+          'saml.response.status',
+          'saml.assertion',
+        ],
       },
       {
         id: 'verify',
         from: 'SP',
         to: 'SP',
         label: 'Verify signature against published certificate',
-        concerns: ['saml.idp.signing-key', 'saml.cert', 'saml.metadata.valid-until'],
+        concerns: [
+          'saml.idp.signing-key',
+          'saml.cert',
+          'saml.metadata.valid-until',
+          'saml.response.sign',
+          'saml.response.issuer',
+        ],
       },
     ]);
   }

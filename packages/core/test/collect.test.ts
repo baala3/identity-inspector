@@ -20,6 +20,8 @@ const TOKEN = `${segment({ alg: 'ES256' })}.${segment({ iss: 'https://op.example
 const METADATA =
   '<md:EntityDescriptor xmlns:md="urn:oasis:names:tc:SAML:2.0:metadata" entityID="x"/>';
 
+const RESPONSE = `<samlp:Response xmlns:samlp="urn:oasis:names:tc:SAML:2.0:protocol" xmlns:saml="urn:oasis:names:tc:SAML:2.0:assertion" ID="_r1" Version="2.0"><saml:Issuer>https://idp.example/metadata</saml:Issuer></samlp:Response>`;
+
 describe('detect', () => {
   it('treats pasted XML as SAML without any request', async () => {
     const { fetcher, calls } = server({});
@@ -110,6 +112,43 @@ describe('collect', () => {
     );
     expect(workspace.target.input).toBe('pasted token');
     expect(calls).toHaveLength(0);
+  });
+
+  it('reads a SAML response pasted as the base64 the browser posted, and requests nothing', async () => {
+    const { fetcher, calls } = server({});
+    const posted = encodeURIComponent(Buffer.from(RESPONSE).toString('base64'));
+    expect(await detect(posted, fetcher)).toBe('saml');
+    const workspace = await collect(posted, fetcher);
+    expect(workspace.target).toEqual({ protocol: 'saml', input: 'https://idp.example/metadata' });
+    expect(workspace.evidence).toEqual([
+      { id: 'saml.response', kind: 'saml.response', provenance: 'user-supplied', raw: RESPONSE },
+    ]);
+    expect(calls).toHaveLength(0);
+  });
+
+  it('recognises a response behind a declaration or a DTD, and leaves metadata alone', async () => {
+    const { fetcher } = server({});
+    const behind = `<?xml version="1.0"?>\n<!DOCTYPE r [<!ENTITY e "x">]>\n${RESPONSE}`;
+    expect((await collect(behind, fetcher)).evidence[0]?.kind).toBe('saml.response');
+    expect((await collect(METADATA, fetcher)).evidence[0]?.kind).toBe('saml.metadata');
+  });
+
+  it('fetches IdP metadata for a pasted response only from the URL given for it', async () => {
+    const { fetcher, calls } = server({ 'https://idp.example/metadata': METADATA });
+    const workspace = await collect(RESPONSE, fetcher, {
+      samlMetadata: 'https://idp.example/metadata',
+    });
+    expect(workspace.evidence.map((e) => [e.kind, e.provenance])).toEqual([
+      ['saml.response', 'user-supplied'],
+      ['saml.metadata', 'discovered'],
+    ]);
+    expect(calls.map((c) => c.url)).toEqual(['https://idp.example/metadata']);
+
+    const pasted = await collect(RESPONSE, server({}).fetcher, { samlMetadata: METADATA });
+    expect(pasted.evidence[1]).toMatchObject({
+      kind: 'saml.metadata',
+      provenance: 'user-supplied',
+    });
   });
 
   it('sends SCIM headers to SCIM endpoints and nowhere else', async () => {

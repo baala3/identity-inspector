@@ -215,6 +215,122 @@ test('the CLI verifies an ID token read from a file', async () => {
   expect(signature).toMatchObject({ severity: 'pass', provenance: 'user-supplied' });
 });
 
+const SAML_METADATA = `${REALM}/protocol/saml/descriptor`;
+
+/**
+ * A real SAML response: Keycloak signs in its administrator to a SAML client and
+ * posts the result to an ACS that exists only as a route in this browser.
+ * Returned exactly as the browser posted it, base64 and URL-encoded.
+ */
+async function samlResponse(page: Page): Promise<string> {
+  const { access_token } = await tokens();
+  // 409 means an earlier run already registered the client, which is fine.
+  await fetch(`${KEYCLOAK}/admin/realms/master/clients`, {
+    method: 'POST',
+    headers: { authorization: `Bearer ${access_token}`, 'content-type': 'application/json' },
+    body: JSON.stringify({
+      clientId: 'https://sp.example/metadata',
+      protocol: 'saml',
+      redirectUris: ['https://sp.example/*'],
+      attributes: {
+        saml_idp_initiated_sso_url_name: 'idi-e2e',
+        saml_assertion_consumer_url_post: 'https://sp.example/acs',
+        'saml.assertion.signature': 'true',
+        'saml.server.signature': 'true',
+        'saml.client.signature': 'false',
+      },
+    }),
+  });
+
+  let posted = '';
+  await page.route('https://sp.example/**', (route) => {
+    posted = new URLSearchParams(route.request().postData() ?? '').get('SAMLResponse') ?? '';
+    return route.fulfill({ status: 200, body: 'received' });
+  });
+  await page.goto(`${REALM}/protocol/saml/clients/idi-e2e`);
+  await page.locator('#username').fill('admin');
+  await page.locator('#password').fill('admin');
+  await page.locator('#kc-login').click();
+  await expect(page.getByText('received')).toBeVisible();
+  return encodeURIComponent(posted);
+}
+
+/** The same response with the user changed and the original signatures kept. */
+function alteredResponse(posted: string): string {
+  const xml = Buffer.from(decodeURIComponent(posted), 'base64').toString();
+  return Buffer.from(xml.replace(/(<saml:NameID[^>]*>)[^<]+/, '$1someone-else')).toString('base64');
+}
+
+test('verifies a pasted SAML response against the metadata its IdP publishes', async ({ page }) => {
+  const posted = await samlResponse(page);
+  const requested: string[] = [];
+  page.context().on('request', (request) => requested.push(request.url()));
+
+  await page.goto('/');
+  await page.getByLabel('Target').fill(posted);
+  await page.getByLabel('IdP metadata (optional)').fill(SAML_METADATA);
+  await page.getByRole('button', { name: 'Inspect' }).click();
+  await expect(page.locator('.results')).toBeVisible();
+
+  await expect(page.locator('.results-head h2')).toHaveText(`SAML response ${REALM}`);
+  const signature = finding(page, 'saml.response.signature');
+  await expect(signature).toHaveCount(2);
+  await expect(signature.locator('.badge')).toHaveText(['pass', 'pass']);
+  await expect(signature.first()).toContainText('that the IdP publishes');
+  await expect(finding(page, 'saml.response.status').locator('.badge')).toHaveText('pass');
+  await expect(finding(page, 'saml.response.issuer').locator('.badge')).toHaveText('pass');
+  await expect(finding(page, 'saml.response.signature-reference').locator('.badge')).toHaveText([
+    'pass',
+    'pass',
+  ]);
+
+  // The response is read here: only the metadata URL goes to the proxy.
+  expect(page.url()).not.toContain('target');
+  const fetched = requested.filter((url) => url.includes('/api/fetch'));
+  expect(fetched).toEqual([expect.stringContaining(encodeURIComponent(SAML_METADATA))]);
+
+  await page.getByRole('tab', { name: 'What it publishes' }).click();
+  await expect(page.locator('.overview')).toContainText('Pasted response');
+  await expect(page.locator('.overview')).toContainText('https://sp.example/acs');
+});
+
+test('says a SAML response without metadata is consistent, not who signed it', async ({ page }) => {
+  await inspect(page, await samlResponse(page));
+  const signature = finding(page, 'saml.response.signature').first();
+  await expect(signature.locator('.badge')).toHaveText('info');
+  await expect(signature).toContainText('does not show who signed it');
+});
+
+test('refuses a SAML response whose subject was changed after it was signed', async ({ page }) => {
+  const forged = alteredResponse(await samlResponse(page));
+  await page.goto('/');
+  await page.getByLabel('Target').fill(forged);
+  await page.getByLabel('IdP metadata (optional)').fill(SAML_METADATA);
+  await page.getByRole('button', { name: 'Inspect' }).click();
+  const signature = finding(page, 'saml.response.signature');
+  await expect(signature.locator('.badge')).toHaveText(['error', 'error']);
+  await expect(signature.first()).toContainText('changed after it was signed');
+});
+
+test('the CLI verifies a SAML response read from a file', async ({ page }) => {
+  const file = test.info().outputPath('response.b64');
+  await writeFile(file, decodeURIComponent(await samlResponse(page)));
+  const outcome = await run('node', [
+    'packages/cli/dist/main.js',
+    'inspect',
+    file,
+    '--metadata',
+    SAML_METADATA,
+    '--format',
+    'json',
+  ]).catch((error: { stdout: string }) => error);
+  const { findings } = JSON.parse(outcome.stdout);
+  const signatures = findings.filter(
+    (f: { checkId: string }) => f.checkId === 'saml.response.signature',
+  );
+  expect(signatures.map((f: { severity: string }) => f.severity)).toEqual(['pass', 'pass']);
+});
+
 test('restates what the target publishes on its own tab, without verdicts', async ({ page }) => {
   await inspect(page, REALM);
   await page.getByRole('tab', { name: 'What it publishes' }).click();

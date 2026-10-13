@@ -1,5 +1,6 @@
 import type { Element } from '@xmldom/xmldom';
 import { DS, MD } from './checks/saml.js';
+import { message, SAML, SAMLP } from './checks/saml-response.js';
 import { jwt, KIND_LABEL, kindOf } from './jwt.js';
 import type { Evidence, Fact, OverviewSection, Workspace } from './model.js';
 import { childElements, descendants, type Json, json, objects, strings, xml } from './parse.js';
@@ -137,6 +138,65 @@ function oidc(
 const ASSERTION = 'urn:oasis:names:tc:SAML:2.0:assertion';
 const shortUrn = (value: string | null) => (value ?? '').split(':').pop() ?? '';
 const scimName = (urn: string) => urn.replace('urn:ietf:params:scim:schemas:', '');
+
+function samlResponse(evidence: Evidence | undefined): OverviewSection[] {
+  const read = message(evidence);
+  if (!read) return [];
+  const { response } = read;
+  const [assertion] = read.assertions;
+  const first = (parent: Element | undefined, ns: string, name: string) =>
+    parent ? descendants(parent, ns, name)[0] : undefined;
+  const said = (element: Element | undefined) => element?.textContent?.trim();
+  const nameId = first(assertion, SAML, 'NameID');
+  const conditions = first(assertion, SAML, 'Conditions');
+  const confirmation = first(assertion, SAML, 'SubjectConfirmationData');
+  const statement = first(assertion, SAML, 'AuthnStatement');
+  const attributes = assertion ? descendants(assertion, SAML, 'Attribute') : [];
+  return [
+    ...section('response', response ? 'Pasted response' : 'Pasted assertion', [
+      ...text('Issuer', said(first(response ?? assertion, SAML, 'Issuer'))),
+      ...text(
+        'Status',
+        shortUrn(first(response, SAMLP, 'StatusCode')?.getAttribute('Value') ?? null),
+      ),
+      ...link('Destination', response?.getAttribute('Destination')),
+      ...text('In response to', response?.getAttribute('InResponseTo')),
+      ...text('Issued at', (response ?? assertion)?.getAttribute('IssueInstant')),
+      ...text(
+        'Assertions',
+        response && `${read.assertions.length} readable, ${read.encrypted.length} encrypted`,
+      ),
+    ]),
+    ...section('assertion', 'Assertion', [
+      ...text('Subject (NameID)', said(nameId)),
+      ...text('NameID format', shortUrn(nameId?.getAttribute('Format') ?? null)),
+      ...chips(
+        'Audience',
+        (assertion ? descendants(assertion, SAML, 'Audience') : []).flatMap((a) => said(a) ?? []),
+      ),
+      ...link('Recipient', confirmation?.getAttribute('Recipient')),
+      ...text('Valid from', conditions?.getAttribute('NotBefore')),
+      ...text('Valid until', conditions?.getAttribute('NotOnOrAfter')),
+      ...text('Signed in at', statement?.getAttribute('AuthnInstant')),
+      ...text('Session index', statement?.getAttribute('SessionIndex')),
+      ...text(
+        'Authentication context',
+        shortUrn(said(first(statement, SAML, 'AuthnContextClassRef')) ?? null),
+      ),
+    ]),
+    ...section(
+      'attributes',
+      `Attributes (${attributes.length})`,
+      attributes.map(
+        (attribute): Fact => ({
+          label: attribute.getAttribute('FriendlyName') || attribute.getAttribute('Name') || '',
+          values: childElements(attribute, SAML, 'AttributeValue').map((v) => said(v) ?? ''),
+          style: 'chips',
+        }),
+      ),
+    ),
+  ];
+}
 
 function saml(metadata: Evidence | undefined): OverviewSection[] {
   const document = metadata && xml(metadata).document;
@@ -304,6 +364,7 @@ export function overviewFor(workspace: Workspace): OverviewSection[] {
     workspace.evidence.find((e) => e.kind === kind && (!e.fetch || e.fetch.status === 200));
   if (workspace.target.protocol === 'oidc')
     return oidc(find('oidc.discovery'), find('oidc.jwks'), find('oidc.token'));
-  if (workspace.target.protocol === 'saml') return saml(find('saml.metadata'));
+  if (workspace.target.protocol === 'saml')
+    return [...samlResponse(find('saml.response')), ...saml(find('saml.metadata'))];
   return scim(workspace);
 }

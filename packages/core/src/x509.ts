@@ -9,6 +9,10 @@ export interface Certificate {
   /** Modulus length for RSA, undefined otherwise. */
   keyBits?: number;
   selfSigned: boolean;
+  /** The SubjectPublicKeyInfo as DER, which is what a signature is verified with. */
+  spki: Uint8Array<ArrayBuffer>;
+  /** The named curve of an EC key, in WebCrypto's spelling. */
+  curve?: string;
 }
 
 const OIDS: Record<string, string> = {
@@ -27,8 +31,17 @@ const OIDS: Record<string, string> = {
   '1.3.101.112': 'Ed25519',
 };
 
+const CURVES: Record<string, string> = {
+  '1.2.840.10045.3.1.7': 'P-256',
+  '1.3.132.0.34': 'P-384',
+  '1.3.132.0.35': 'P-521',
+};
+
 interface Tlv {
   tag: number;
+  /** Where the element begins, header included. */
+  at: number;
+  /** Where its content begins. */
   start: number;
   end: number;
 }
@@ -51,7 +64,7 @@ function read(der: Uint8Array, offset: number): Tlv {
   }
   const end = start + length;
   if (end > der.length) throw new Error('truncated DER');
-  return { tag, start, end };
+  return { tag, at: offset, start, end };
 }
 
 function children(der: Uint8Array, parent: Tlv): Tlv[] {
@@ -107,7 +120,7 @@ function equal(a: Uint8Array, b: Uint8Array): boolean {
   return a.length === b.length && a.every((byte, i) => byte === b[i]);
 }
 
-export function decodeBase64(text: string): Uint8Array {
+export function decodeBase64(text: string): Uint8Array<ArrayBuffer> {
   const binary = atob(text.replace(/-----[A-Z ]+-----/g, '').replace(/\s+/g, ''));
   return Uint8Array.from(binary, (c) => c.charCodeAt(0));
 }
@@ -143,7 +156,12 @@ export function parseCertificate(base64: string): Certificate {
       der.subarray(issuer.start, issuer.end),
       der.subarray(subject.start, subject.end),
     ),
+    spki: der.slice(spki.at, spki.end),
   };
+  const [, curveOid] = keyAlg ? children(der, keyAlg) : [];
+  const curve =
+    cert.keyType === 'EC' && curveOid?.tag === 0x06 ? CURVES[oid(der, curveOid)] : undefined;
+  if (curve) cert.curve = curve;
   if (cert.keyType === 'RSA') {
     // BIT STRING: one unused-bits byte, then RSAPublicKey ::= SEQUENCE { modulus, exponent }.
     const [modulus] = children(der, read(der, keyBits.start + 1));
