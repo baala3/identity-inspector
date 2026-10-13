@@ -416,3 +416,27 @@ test('returns to the empty home screen from the brand', async ({ page }) => {
   await expect(page.getByText('Try a public target')).toBeVisible();
   expect(new URL(page.url()).search).toBe('');
 });
+
+test('offers a public target to try for every protocol', async ({ page }) => {
+  await page.goto('/');
+  const kinds = await page.locator('.examples .tag').allInnerTexts();
+  expect(new Set(kinds)).toEqual(new Set(['OIDC', 'SAML', 'SCIM']));
+
+  // Choosing one fills the target and names it in a link that can be shared.
+  await page.getByRole('button', { name: /api\.slack\.com\/scim\/v2/ }).click();
+  await expect(page.getByLabel('Target')).toHaveValue('https://api.slack.com/scim/v2');
+  expect(new URL(page.url()).searchParams.get('target')).toBe('https://api.slack.com/scim/v2');
+});
+
+test('keeps the example targets inside their card on a phone', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 800 });
+  await page.goto('/');
+  const card = await page.locator('.empty > div').first().boundingBox();
+  for (const button of await page.locator('.examples button').all()) {
+    const box = await button.boundingBox();
+    expect((box?.x ?? 0) + (box?.width ?? 0)).toBeLessThanOrEqual(
+      (card?.x ?? 0) + (card?.width ?? 0),
+    );
+  }
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(390);
+});
