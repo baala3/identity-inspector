@@ -524,6 +524,31 @@ footer::before {
   color: rgba(255, 255, 255, 0.78);
 }
 
+/* The same line, when it says the form as filled in cannot be inspected. */
+.trust.warning {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 12px 16px;
+  background: rgba(241, 191, 10, 0.14);
+  border: 1px solid rgba(241, 191, 10, 0.6);
+  border-radius: var(--r-sm);
+  color: var(--white);
+  font-weight: 500;
+}
+
+.trust.warning svg {
+  flex: none;
+  width: 18px;
+  height: 18px;
+  margin-top: 1px;
+  fill: none;
+  stroke: var(--yellow);
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
 .failure {
   margin-top: 20px;
   padding: 16px 22px;

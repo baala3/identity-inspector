@@ -374,7 +374,15 @@ export function App() {
             <span>{status.state === 'loading' ? 'Inspecting…' : 'Inspect'}</span>
           </button>
         </div>
-        <p className="trust">
+        <p
+          className={misplaced ? 'trust warning' : 'trust'}
+          role={misplaced ? 'status' : undefined}
+        >
+          {misplaced && (
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M12 4 2.5 20h19L12 4zM12 10v4.5M12 17.2v.3" />
+            </svg>
+          )}
           {misplaced
             ? `A pasted ${pastedResponse ? 'SAML response' : pastedXml ? 'XML document' : pastedKind} cannot be inspected as ${protocol.toUpperCase()}. Choose Detect or ${readAs.toUpperCase()}, and it is read in this browser.`
             : pastedResponse
