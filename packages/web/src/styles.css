@@ -1155,6 +1155,15 @@ aside {
   color: var(--muted);
 }
 
+.overview .unread {
+  padding: 14px 20px;
+  background: var(--chip);
+  border-radius: var(--r-sm);
+  color: var(--warn);
+  font-size: 14px;
+  overflow-wrap: anywhere;
+}
+
 .overview .card {
   gap: 4px;
 }

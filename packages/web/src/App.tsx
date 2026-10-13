@@ -465,7 +465,9 @@ export function App() {
                   What it publishes
                 </button>
               </div>
-              {view === 'overview' && <Overview sections={report.overview} />}
+              {view === 'overview' && (
+                <Overview sections={report.overview} evidence={report.evidence} />
+              )}
               {view === 'findings' && (
                 <div className="filters">
                   {SEVERITIES.map((severity) => (
@@ -510,10 +512,28 @@ export function App() {
   );
 }
 
-function Overview({ sections }: { sections: OverviewSection[] }) {
+function Overview({
+  sections,
+  evidence,
+}: {
+  sections: OverviewSection[];
+  evidence: Report['evidence'];
+}) {
+  // A document that could not be fetched leaves its sections out, which must not pass unnoticed.
+  const unread = evidence.filter((e) => e.fetch && e.fetch.status !== 200);
+  const missing = unread.length > 0 && (
+    <p className="unread" role="note">
+      Not shown, because it could not be read:{' '}
+      {unread.map((e) => `${e.source} (${e.fetch?.error ?? `HTTP ${e.fetch?.status}`})`).join(', ')}
+      . The Findings tab has the details.
+    </p>
+  );
   if (!sections.length) {
     return (
-      <p className="muted none">Nothing readable was published, so there is nothing to show.</p>
+      <div className="overview">
+        <p className="muted none">Nothing readable was published, so there is nothing to show.</p>
+        {missing}
+      </div>
     );
   }
   return (
@@ -521,6 +541,7 @@ function Overview({ sections }: { sections: OverviewSection[] }) {
       <p className="muted">
         Restated from the evidence. These are the target's own claims, not tested behaviour.
       </p>
+      {missing}
       {sections.map((section) => (
         <section key={section.id} className="card">
           <h2>{section.title}</h2>

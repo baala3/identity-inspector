@@ -98,6 +98,12 @@ test('inspects a bare three-part hostname as a provider, not as a token', async 
 test('reports an unreachable target instead of failing', async ({ page }) => {
   await inspect(page, 'http://localhost:9/realms/none');
   await expect(finding(page, 'oidc.discovery.reachable').locator('.badge')).toHaveText('error');
+
+  // The overview has nothing to restate, and says which document is the reason.
+  await page.getByRole('tab', { name: 'What it publishes' }).click();
+  await expect(page.locator('.overview .unread')).toContainText(
+    'http://localhost:9/realms/none/.well-known/openid-configuration',
+  );
 });
 
 test('opens a shared link straight into its report', async ({ page }) => {
