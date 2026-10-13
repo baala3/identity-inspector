@@ -37,6 +37,20 @@ const EXAMPLES = [
   ['SCIM', 'https://api.slack.com/scim/v2'],
 ] as const;
 
+type Choice = Protocol | 'auto';
+
+/** What each choice of protocol takes as its target. */
+const PLACEHOLDER: Record<Choice, string> = {
+  auto: 'OIDC issuer or token, OAuth server, SAML metadata or response, or SCIM base URL',
+  oidc: 'Issuer or bare domain, or a pasted ID token or JWT access token',
+  oauth: 'Authorization server, such as mcp.example.com',
+  saml: 'Metadata URL or XML, or a pasted response',
+  scim: 'Base URL, such as https://app.example/scim/v2',
+};
+
+/** The choices under which something is judged at an instant: a certificate, a token, an assertion. */
+const TIME_BOUNDED: ReadonlySet<Choice> = new Set(['auto', 'oidc', 'saml']);
+
 const SEVERITIES: Severity[] = ['error', 'warn', 'info', 'pass'];
 
 const PROVENANCE: Record<Provenance, string> = {
@@ -148,7 +162,7 @@ function FindingCard({ finding }: { finding: Finding }) {
 export function App() {
   const params = useMemo(() => new URLSearchParams(location.search), []);
   const [input, setInput] = useState(params.get('target') ?? '');
-  const [protocol, setProtocol] = useState<Protocol | 'auto'>(
+  const [protocol, setProtocol] = useState<Choice>(
     (params.get('protocol') as Protocol | null) ?? 'auto',
   );
   const [at, setAt] = useState(params.get('at') ?? '');
@@ -178,33 +192,32 @@ export function App() {
     return () => instance.terminate();
   }, []);
 
-  const inspect = useCallback(
-    (target: string, as: Protocol | 'auto', when: string, idpMetadata = '') => {
-      const trimmed = target.trim();
-      if (!trimmed) return;
-      const instant = when ? new Date(when) : undefined;
-      const request: InspectRequest = {
-        id: ++latest.current,
-        input: trimmed,
-        proxy: PROXY,
-        ...(as !== 'auto' && { protocol: as }),
-        ...(isResponse(trimmed) && idpMetadata.trim() && { metadata: idpMetadata.trim() }),
-        ...(instant && !Number.isNaN(instant.getTime()) && { at: instant.toISOString() }),
-      };
-      setStatus({ state: 'loading' });
-      worker.current?.postMessage(request);
+  const inspect = useCallback((target: string, as: Choice, chosen: string, idpMetadata = '') => {
+    const trimmed = target.trim();
+    if (!trimmed) return;
+    // An instant left over from another protocol judges nothing here, so it is not carried along.
+    const when = TIME_BOUNDED.has(as) ? chosen : '';
+    const instant = when ? new Date(when) : undefined;
+    const request: InspectRequest = {
+      id: ++latest.current,
+      input: trimmed,
+      proxy: PROXY,
+      ...(as !== 'auto' && { protocol: as }),
+      ...(isResponse(trimmed) && idpMetadata.trim() && { metadata: idpMetadata.trim() }),
+      ...(instant && !Number.isNaN(instant.getTime()) && { at: instant.toISOString() }),
+    };
+    setStatus({ state: 'loading' });
+    worker.current?.postMessage(request);
 
-      // Only a public target makes a shareable link; pasted material stays out of the URL.
-      const link = new URLSearchParams();
-      if (!isPasted(trimmed)) {
-        link.set('target', trimmed);
-        if (as !== 'auto') link.set('protocol', as);
-        if (when) link.set('at', when);
-      }
-      history.replaceState(null, '', link.size ? `?${link}` : location.pathname);
-    },
-    [],
-  );
+    // Only a public target makes a shareable link; pasted material stays out of the URL.
+    const link = new URLSearchParams();
+    if (!isPasted(trimmed)) {
+      link.set('target', trimmed);
+      if (as !== 'auto') link.set('protocol', as);
+      if (when) link.set('at', when);
+    }
+    history.replaceState(null, '', link.size ? `?${link}` : location.pathname);
+  }, []);
 
   // A link that names a target runs it on arrival.
   useEffect(() => {
@@ -242,6 +255,9 @@ export function App() {
       (f) => (!only || f.severity === only) && (!selected || concerns(selected, f)),
     ) ?? [];
   const pastedResponse = isResponse(input);
+  // Metadata verifies a response and nothing else, so under SAML it waits for one to be pasted.
+  const offersMetadata = protocol === 'saml' || (protocol === 'auto' && pastedResponse);
+  const timeBounded = TIME_BOUNDED.has(protocol);
   // Metadata is the only XML that is not a response; both need room and keep Enter for new lines.
   const pastedXml = looksLikeXml(input) || pastedResponse;
   const pastedToken = looksLikeJwt(input);
@@ -294,7 +310,7 @@ export function App() {
           value={input}
           rows={pastedXml ? 8 : pastedToken ? 5 : 1}
           spellCheck={false}
-          placeholder="OIDC issuer or token, OAuth server, SAML metadata or response, or SCIM base URL"
+          placeholder={PLACEHOLDER[protocol]}
           onChange={(event) => setInput(event.target.value)}
           onKeyDown={(event) => {
             if (event.key === 'Enter' && !event.shiftKey && !pastedXml) {
@@ -303,7 +319,7 @@ export function App() {
             }
           }}
         />
-        {pastedResponse && (
+        {offersMetadata && (
           <>
             <label htmlFor="metadata">IdP metadata (optional)</label>
             <textarea
@@ -311,7 +327,12 @@ export function App() {
               value={metadata}
               rows={looksLikeXml(metadata) ? 6 : 1}
               spellCheck={false}
-              placeholder="Metadata URL or XML. It is what shows who signed the response."
+              disabled={!pastedResponse && input.trim() !== ''}
+              placeholder={
+                pastedResponse
+                  ? 'Metadata URL or XML. It is what shows who signed the response.'
+                  : 'For a pasted response: the metadata URL or XML of the IdP that signed it'
+              }
               onChange={(event) => setMetadata(event.target.value)}
             />
           </>
@@ -331,14 +352,16 @@ export function App() {
               </label>
             ))}
           </fieldset>
-          <label className="as-of">
-            <span>Evaluate as of</span>
-            <input
-              type="datetime-local"
-              value={at}
-              onChange={(event) => setAt(event.target.value)}
-            />
-          </label>
+          {timeBounded && (
+            <label className="as-of">
+              <span>Evaluate as of</span>
+              <input
+                type="datetime-local"
+                value={at}
+                onChange={(event) => setAt(event.target.value)}
+              />
+            </label>
+          )}
           <button type="submit" disabled={!input.trim() || status.state === 'loading'}>
             <span className="ico" aria-hidden="true">
               <svg viewBox="0 0 24 24" aria-hidden="true">
@@ -355,7 +378,9 @@ export function App() {
               ? 'Pasted XML is parsed in this browser and is not sent anywhere.'
               : pastedToken
                 ? `This ${pastedKind} is read in this browser and is not sent anywhere. Only the issuer it names is asked for its public documents.`
-                : 'URLs are fetched by a proxy that accepts a URL and nothing else. Credentials are never requested here.'}
+                : protocol === 'scim'
+                  ? 'The base URL is fetched by a proxy that accepts a URL and nothing else. A server that wants a token can only be read from the command line, because no credential is ever sent from here.'
+                  : 'URLs are fetched by a proxy that accepts a URL and nothing else. Credentials are never requested here.'}
         </p>
       </form>
 
@@ -375,8 +400,10 @@ export function App() {
                   <button
                     type="button"
                     onClick={() => {
+                      // An example is detected for what it is, whatever the picker was left on.
                       setInput(target);
-                      inspect(target, protocol, at);
+                      setProtocol('auto');
+                      inspect(target, 'auto', at);
                     }}
                   >
                     <span className="tag">{kind}</span>
