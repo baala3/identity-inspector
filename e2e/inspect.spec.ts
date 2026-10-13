@@ -505,6 +505,21 @@ test('offers a public target to try for every protocol', async ({ page }) => {
   expect(new URL(page.url()).searchParams.get('target')).toBe('https://api.slack.com/scim/v2');
 });
 
+test('explains how to use it until there is a report to read instead', async ({ page }) => {
+  await page.goto('/');
+  const guide = page.locator('.guide');
+  await expect(guide.getByRole('heading', { level: 3 })).toHaveText([
+    'Give it a target',
+    'Read the findings',
+    'Take it further',
+  ]);
+  // Every protocol the picker offers is explained.
+  await expect(guide.locator('dt')).toHaveText(['OIDC', 'OAUTH', 'SAML', 'SCIM']);
+
+  await inspect(page, REALM);
+  await expect(guide).toHaveCount(0);
+});
+
 test('keeps the example targets inside their card on a phone', async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 800 });
   await page.goto('/');

@@ -156,6 +156,11 @@ button {
   margin-bottom: clamp(48px, 7vw, 80px);
 }
 
+/* The home screen is a stack of cards, and the closing panel is the last of them. */
+.page > .empty {
+  margin-bottom: 22px;
+}
+
 /* The small mono label that opens every block. */
 .target > label,
 .segmented legend,
@@ -614,7 +619,7 @@ footer::before {
 
 .empty {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 22px;
   margin-top: 22px;
 }
@@ -628,6 +633,87 @@ footer::before {
   padding: 26px;
   background: var(--chip);
   border-radius: var(--r);
+}
+
+/* The guide runs the full width under the two cards, one column per step. */
+.empty > .guide {
+  grid-column: 1 / -1;
+}
+
+/* The first step is the long one, so it takes a column and the other two share the next. */
+.guide ol {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 28px 44px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  counter-reset: step;
+}
+
+.guide li:first-child {
+  grid-row: span 2;
+}
+
+.guide li {
+  display: grid;
+  gap: 10px;
+  align-content: start;
+  min-width: 0;
+  counter-increment: step;
+}
+
+.guide h3 {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-size: 18px;
+  font-weight: 600;
+}
+
+.guide h3::before {
+  content: counter(step);
+  flex: none;
+  width: 28px;
+  border-radius: 999px;
+  background: var(--blue);
+  color: var(--white);
+  font-family: var(--mono);
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 28px;
+  text-align: center;
+}
+
+.guide p,
+.guide dd {
+  color: var(--muted);
+  font-size: 14px;
+  line-height: 1.6;
+  overflow-wrap: anywhere;
+}
+
+.guide dl {
+  display: grid;
+  gap: 12px;
+  margin-top: 4px;
+}
+
+.guide dl > div {
+  display: grid;
+  grid-template-columns: 62px minmax(0, 1fr);
+  gap: 12px;
+  align-items: baseline;
+}
+
+.guide .tag {
+  background: var(--chip-2);
+  color: var(--ink);
+  box-shadow: none;
+}
+
+.guide code {
+  font-size: 12px;
 }
 
 .examples {
@@ -721,7 +807,8 @@ footer::before {
   font-weight: 400;
   line-height: 1.04;
   letter-spacing: 0.01em;
-  overflow-wrap: anywhere;
+  /* Break at the points the markup offers first, and inside a word only when one outgrows the line. */
+  overflow-wrap: break-word;
 }
 
 .results-head p {
@@ -1260,6 +1347,20 @@ footer {
     padding: 0 4px;
     font-size: 13px;
     text-align: center;
+  }
+
+  .empty,
+  .guide ol {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .results-head h2 {
+    font-size: 22px;
+    line-height: 1.15;
+  }
+
+  .tag.solid {
+    vertical-align: 0.25em;
   }
 
   .target button[type="submit"] {
