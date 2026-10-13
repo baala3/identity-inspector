@@ -164,6 +164,25 @@ test('judges a server with no OpenID configuration as an OAuth authorization ser
   }
 });
 
+test('says what no published document can show, beside what the target publishes', async ({
+  page,
+}) => {
+  await inspect(page, REALM);
+  await page.getByRole('tab', { name: 'What it publishes' }).click();
+  const unseen = page.locator('.overview .unseen');
+  await expect(unseen).toContainText('Not visible in what it publishes');
+  await expect(unseen.locator('li')).toHaveCount(6);
+  await expect(unseen).toContainText('Whether refresh tokens are rotated');
+  await page.screenshot({
+    fullPage: true,
+  });
+
+  // Nothing was read from an unreachable target, so there is nothing to qualify.
+  await inspect(page, 'http://localhost:9/realms/none');
+  await page.getByRole('tab', { name: 'What it publishes' }).click();
+  await expect(page.locator('.overview .unseen')).toHaveCount(0);
+});
+
 test('opens a shared link straight into its report', async ({ page }) => {
   await page.goto(`/?target=${encodeURIComponent(REALM)}&protocol=oidc`);
   await expect(page.locator('.results-head h2')).toHaveText(`OIDC ${REALM}`);
@@ -484,6 +503,21 @@ test('offers a public target to try for every protocol', async ({ page }) => {
   await page.getByRole('button', { name: /api\.slack\.com\/scim\/v2/ }).click();
   await expect(page.getByLabel('Target')).toHaveValue('https://api.slack.com/scim/v2');
   expect(new URL(page.url()).searchParams.get('target')).toBe('https://api.slack.com/scim/v2');
+});
+
+test('explains how to use it until there is a report to read instead', async ({ page }) => {
+  await page.goto('/');
+  const guide = page.locator('.guide');
+  await expect(guide.getByRole('heading', { level: 3 })).toHaveText([
+    'Give it a target',
+    'Read the findings',
+    'Take it further',
+  ]);
+  // Every protocol the picker offers is explained.
+  await expect(guide.locator('dt')).toHaveText(['OIDC', 'OAUTH', 'SAML', 'SCIM']);
+
+  await inspect(page, REALM);
+  await expect(guide).toHaveCount(0);
 });
 
 test('keeps the example targets inside their card on a phone', async ({ page }) => {

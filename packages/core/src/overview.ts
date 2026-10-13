@@ -112,7 +112,13 @@ function oidc(
       ...chips('PKCE methods', strings(doc.code_challenge_methods_supported)),
       ...chips('ID token signing', strings(doc.id_token_signing_alg_values_supported)),
       ...chips('Client authentication', strings(doc.token_endpoint_auth_methods_supported)),
+      ...chips(
+        'Client authentication signing',
+        strings(doc.token_endpoint_auth_signing_alg_values_supported),
+      ),
+      ...chips('Request object signing', strings(doc.request_object_signing_alg_values_supported)),
       ...chips('DPoP signing', strings(doc.dpop_signing_alg_values_supported)),
+      ...text('Mutual-TLS-bound access tokens', doc.tls_client_certificate_bound_access_tokens),
       ...text('Pushed authorization requests required', doc.require_pushed_authorization_requests),
       ...text('Issuer in login response', doc.authorization_response_iss_parameter_supported),
     ]),
@@ -371,4 +377,43 @@ export function overviewFor(workspace: Workspace): OverviewSection[] {
   if (workspace.target.protocol === 'saml')
     return [...samlResponse(find('saml.response')), ...saml(find('saml.metadata'))];
   return scim(workspace);
+}
+
+const UNSEEN_SERVER = [
+  'How long an authorization code lives, and whether it can be used twice',
+  'Whether PKCE is enforced, or only accepted when a client sends it',
+  'How strictly redirect URIs are matched',
+  'Whether refresh tokens are rotated',
+  'Which clients may use each grant and each authentication method',
+  'Whether the server behaves as its metadata says',
+];
+
+const UNSEEN: Record<Workspace['target']['protocol'], string[]> = {
+  oidc: UNSEEN_SERVER,
+  oauth: UNSEEN_SERVER,
+  saml: [
+    'Whether real responses are signed the way the metadata says, and with which algorithm',
+    'Which NameID and attributes a real response carries',
+    'How much clock skew is tolerated',
+    'Whether a response is accepted more than once',
+    'Whether the party behaves as its metadata says',
+  ],
+  scim: [
+    'Whether the filters, PATCH operations, and pagination it advertises actually work',
+    'Which attributes are accepted on write, beyond those in the published schemas',
+    'Whether a user is removed or only deactivated when deprovisioned',
+    'Rate limits, and how the server answers when they are reached',
+    'Whether the server behaves as its configuration says',
+  ],
+};
+
+/**
+ * What documents of the kind gathered can never show, so that silence is not read as a pass.
+ * Empty when nothing a target publishes was read: there is then nothing to qualify.
+ */
+export function unseenFor(workspace: Workspace): string[] {
+  const published = workspace.evidence.some(
+    (e) => e.fetch?.status === 200 || e.kind === 'saml.metadata',
+  );
+  return published ? UNSEEN[workspace.target.protocol] : [];
 }

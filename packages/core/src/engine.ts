@@ -5,7 +5,7 @@ import { scimChecks } from './checks/scim.js';
 import { tokenChecks } from './checks/token.js';
 import { flowFor } from './flow.js';
 import type { Check, Finding, Report, Severity, Workspace } from './model.js';
-import { overviewFor } from './overview.js';
+import { overviewFor, unseenFor } from './overview.js';
 
 export const checks: readonly Check[] = [
   ...oidcChecks,
@@ -52,6 +52,7 @@ export async function evaluate(workspace: Workspace, instant: Date = new Date())
     findings,
     flow: flowFor(workspace),
     overview: overviewFor(workspace),
+    unseen: unseenFor(workspace),
     summary,
   };
 }

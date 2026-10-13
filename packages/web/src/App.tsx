@@ -17,6 +17,7 @@ import {
 } from '@identity-inspector/core';
 import {
   type FormEvent,
+  Fragment,
   type ReactNode,
   useCallback,
   useEffect,
@@ -389,6 +390,7 @@ export function App() {
             <h2>Every claim says where it came from</h2>
             <Legend />
           </div>
+          <Guide />
         </section>
       )}
 
@@ -399,7 +401,7 @@ export function App() {
               <h2>
                 <span className="tag solid">{report.target.protocol.toUpperCase()}</span>{' '}
                 {inspectedKind && <span className="tag solid kind">{inspectedKind}</span>}{' '}
-                {report.target.input}
+                <Breakable text={report.target.input} />
               </h2>
               <p className="muted">Evaluated as of {new Date(report.instant).toLocaleString()}</p>
             </div>
@@ -490,7 +492,11 @@ export function App() {
                 </button>
               </div>
               {view === 'overview' && (
-                <Overview sections={report.overview} evidence={report.evidence} />
+                <Overview
+                  sections={report.overview}
+                  evidence={report.evidence}
+                  unseen={report.unseen}
+                />
               )}
               {view === 'findings' && (
                 <div className="filters">
@@ -529,8 +535,8 @@ export function App() {
       )}
 
       <footer>
-        This inspection reads published documents only. It does not log in, exchange tokens, or
-        verify signatures yet.
+        This inspection reads published documents and what you paste. It does not log in or exchange
+        tokens yet.
       </footer>
     </div>
   );
@@ -539,9 +545,11 @@ export function App() {
 function Overview({
   sections,
   evidence,
+  unseen,
 }: {
   sections: OverviewSection[];
   evidence: Report['evidence'];
+  unseen: string[];
 }) {
   // A document that could not be fetched leaves its sections out, which must not pass unnoticed.
   const unread = evidence.filter((e) => e.fetch && e.fetch.status !== 200);
@@ -593,8 +601,114 @@ function Overview({
           </dl>
         </section>
       ))}
+      {unseen.length > 0 && (
+        <section className="card unseen">
+          <h2>Not visible in what it publishes</h2>
+          <p className="muted">
+            No published document can show these. Only a request to the target can.
+          </p>
+          <ul>
+            {unseen.map((item) => (
+              <li key={item}>{item}</li>
+            ))}
+          </ul>
+        </section>
+      )}
     </div>
   );
+}
+
+const ACCEPTED: Array<[string, ReactNode]> = [
+  [
+    'OIDC',
+    <>
+      An issuer or a bare domain. Or paste an ID token or a JWT access token, and its signature is
+      checked against the keys its issuer publishes.
+    </>,
+  ],
+  [
+    'OAUTH',
+    <>
+      An authorization server that publishes its metadata at{' '}
+      <code>/.well-known/oauth-authorization-server</code>, as most MCP servers do.
+    </>,
+  ],
+  [
+    'SAML',
+    <>
+      A metadata URL, or the XML itself. Or paste a response, as XML or as the base64 the browser
+      posted, and give the IdP metadata to verify its signature against.
+    </>,
+  ],
+  [
+    'SCIM',
+    <>
+      The base URL, such as <code>https://app.example/scim/v2</code>. A server that wants a token
+      can only be read from the command line, because no credential is ever sent from here.
+    </>,
+  ],
+];
+
+/** How to use the tool, shown where a newcomer lands and gone once there is a report to read. */
+function Guide() {
+  return (
+    <div className="guide">
+      <h2>How to use it</h2>
+      <ol>
+        <li>
+          <h3>Give it a target</h3>
+          <p>Leave the protocol on Detect unless the tool guesses wrong.</p>
+          <dl>
+            {ACCEPTED.map(([kind, accepted]) => (
+              <div key={kind}>
+                <dt>
+                  <span className="tag">{kind}</span>
+                </dt>
+                <dd>{accepted}</dd>
+              </div>
+            ))}
+          </dl>
+        </li>
+        <li>
+          <h3>Read the findings</h3>
+          <p>
+            Errors and warnings come first. Each one says what is wrong, cites the rule it rests on,
+            and says what to change, whichever side of the integration you run.
+          </p>
+          <p>
+            Select a step in the flow to see only the findings about it, or a severity to see that
+            severity alone.
+          </p>
+          <p>
+            The second tab restates what the target publishes with no verdict attached, and ends
+            with what no published document can show.
+          </p>
+        </li>
+        <li>
+          <h3>Take it further</h3>
+          <p>
+            Set <em>Evaluate as of</em> to judge certificates and tokens at another moment, such as
+            when an incident happened.
+          </p>
+          <p>
+            The address bar becomes a link to the report, and the report downloads as JSON or
+            Markdown. Anything you paste stays out of the link.
+          </p>
+        </li>
+      </ol>
+    </div>
+  );
+}
+
+/** A URL that wraps after a slash or a dot where it must wrap, never in the middle of a word. */
+function Breakable({ text }: { text: string }) {
+  return text.split(/(?<=[/.?&=])(?=[^/])/).map((part, index) => (
+    // biome-ignore lint/suspicious/noArrayIndexKey: the parts of one string, in order, never reordered
+    <Fragment key={index}>
+      {index > 0 && <wbr />}
+      {part}
+    </Fragment>
+  ));
 }
 
 function Legend() {

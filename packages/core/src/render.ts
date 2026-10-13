@@ -71,6 +71,16 @@ export function toMarkdown(report: Report): string {
       ...section.facts.map((fact) => `- ${fact.label}: ${fact.values.join(', ')}`),
       '',
     ]),
+    ...(report.unseen.length
+      ? [
+          '### Not visible in what it publishes',
+          '',
+          'No published document can show these. Only a request to the target can.',
+          '',
+          ...report.unseen.map((item) => `- ${item}`),
+          '',
+        ]
+      : []),
     '## Findings',
     '',
     ...report.findings.map((f) => `${findingMarkdown(f)}\n`),

@@ -35,6 +35,7 @@ A file holding a SAML response, as XML or as the base64 the browser posted, has 
 With `--metadata` the signatures are checked against the certificates the IdP publishes; without it they can only be shown to be consistent with the certificate carried inside the response, which says nothing about who signed it.
 The protocol is detected from the target; pass `--protocol` to skip detection.
 The command exits 1 when a finding reaches `--fail-on` (default `error`), so it can gate CI.
+`--overview` lists what the target publishes, followed by what no published document can show.
 `--at <ISO date>` judges time-bounded evidence as of another instant, for example the moment an incident happened.
 
 ## Web interface
