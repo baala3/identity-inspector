@@ -277,6 +277,38 @@ test('refuses a token whose claims were changed after it was signed', async ({ p
   await expect(finding(page, 'oidc.token.signature')).toContainText('does not verify');
 });
 
+test('refuses a token pasted under a protocol that cannot read it, and sends it nowhere', async ({
+  page,
+}) => {
+  const token = await idToken();
+  const requested: string[] = [];
+  page.context().on('request', (request) => requested.push(request.url()));
+
+  await page.goto('/');
+  await page.getByLabel('Target').fill(token);
+  await page.locator('.segmented label', { hasText: 'SCIM' }).click();
+  await page.getByRole('button', { name: 'Inspect' }).click();
+
+  await expect(page.getByRole('alert')).toContainText('It was not sent anywhere');
+  await expect(page.locator('.results')).toHaveCount(0);
+  expect(requested.filter((url) => url.includes('/api/fetch'))).toEqual([]);
+  expect(requested.join('\n')).not.toContain(token.split('.')[2]);
+});
+
+test('the CLI refuses a token file under a protocol that cannot read it', async () => {
+  const file = test.info().outputPath('id-token.jwt');
+  await writeFile(file, `${await idToken()}\n`);
+  const outcome = await run('node', [
+    'packages/cli/dist/main.js',
+    'inspect',
+    file,
+    '--protocol',
+    'scim',
+  ]).catch((error: { code: number; stderr: string }) => error);
+  expect(outcome).toMatchObject({ code: 2 });
+  expect(outcome.stderr.trim()).toMatch(/^A pasted token .* It was not sent anywhere\.$/);
+});
+
 test('the CLI verifies an ID token read from a file', async () => {
   const file = test.info().outputPath('id-token.jwt');
   await writeFile(file, `${await idToken()}\n`);
@@ -503,6 +535,72 @@ test('offers a public target to try for every protocol', async ({ page }) => {
   await page.getByRole('button', { name: /api\.slack\.com\/scim\/v2/ }).click();
   await expect(page.getByLabel('Target')).toHaveValue('https://api.slack.com/scim/v2');
   expect(new URL(page.url()).searchParams.get('target')).toBe('https://api.slack.com/scim/v2');
+});
+
+test('shapes the form to the protocol chosen', async ({ page }) => {
+  await page.goto('/');
+  const target = page.getByLabel('Target');
+  const metadata = page.getByLabel('IdP metadata (optional)');
+  const asOf = page.getByLabel('Evaluate as of');
+  const choose = (name: string) => page.locator('.segmented label', { hasText: name }).click();
+
+  // Detect takes anything, and asks for metadata only once a response is pasted.
+  await expect(target).toHaveAttribute('placeholder', /OIDC issuer or token, OAuth server/);
+  await expect(metadata).toHaveCount(0);
+  await expect(asOf).toBeVisible();
+
+  await choose('OIDC');
+  await expect(target).toHaveAttribute('placeholder', /ID token or JWT access token/);
+  await expect(asOf).toBeVisible();
+
+  // Nothing an authorization server or a SCIM server publishes is judged at an instant.
+  await choose('OAUTH');
+  await expect(target).toHaveAttribute('placeholder', /Authorization server/);
+  await expect(asOf).toHaveCount(0);
+
+  await choose('SCIM');
+  await expect(target).toHaveAttribute('placeholder', /Base URL/);
+  await expect(asOf).toHaveCount(0);
+  await expect(page.locator('.trust')).toContainText('only be read from the command line');
+
+  // SAML offers the metadata a response is verified against, and sets it aside for any other target.
+  await choose('SAML');
+  await expect(target).toHaveAttribute('placeholder', /Metadata URL or XML, or a pasted response/);
+  await expect(asOf).toBeVisible();
+  await expect(metadata).toBeEnabled();
+  await target.fill(`${REALM}/protocol/saml/descriptor`);
+  await expect(metadata).toBeDisabled();
+
+  // A pasted response brings the metadata field with it under SAML and Detect, and nowhere else.
+  await target.fill('<samlp:Response xmlns:samlp="urn:oasis:names:tc:SAML:2.0:protocol"/>');
+  await expect(metadata).toBeEnabled();
+  await choose('Detect');
+  await expect(metadata).toBeEnabled();
+  for (const other of ['OIDC', 'OAUTH', 'SCIM']) {
+    await choose(other);
+    await expect(metadata).toHaveCount(0);
+  }
+});
+
+test('leaves an instant chosen under another protocol out of a SCIM inspection', async ({
+  page,
+}) => {
+  await page.goto('/');
+  await page.getByLabel('Evaluate as of').fill('2099-01-01T00:00');
+  await page.locator('.segmented label', { hasText: 'SCIM' }).click();
+  await page.getByLabel('Target').fill('http://localhost:9/scim/v2');
+  await page.getByRole('button', { name: 'Inspect' }).click();
+  await expect(page.locator('.results')).toBeVisible();
+  expect(new URL(page.url()).searchParams.get('at')).toBeNull();
+  await expect(page.locator('.results-head .muted')).not.toContainText('2099');
+});
+
+test('inspects an example as what it is, whatever protocol was chosen before', async ({ page }) => {
+  await page.goto('/');
+  await page.locator('.segmented label', { hasText: 'SAML' }).click();
+  await page.getByRole('button', { name: /api\.slack\.com\/scim\/v2/ }).click();
+  await expect(page.locator('.results-head .tag').first()).toHaveText('SCIM');
+  await expect(page.getByRole('radio', { name: 'Detect' })).toBeChecked();
 });
 
 test('explains how to use it until there is a report to read instead', async ({ page }) => {

@@ -351,6 +351,11 @@ footer::before {
   line-height: 22px;
 }
 
+.target textarea:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
 .target textarea::placeholder {
   color: #586078;
   /* A one-row field shows one row of hint, cut short where the screen is narrow. */
