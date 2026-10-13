@@ -630,3 +630,12 @@ test('keeps the example targets inside their card on a phone', async ({ page }) 
   }
   expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(390);
 });
+
+test('keeps the arrow of the Inspect button inside its knob on a phone', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 800 });
+  await page.goto('/');
+  const button = await page.getByRole('button', { name: 'Inspect' }).boundingBox();
+  const arrow = await page.locator('.target button[type="submit"] .ico').boundingBox();
+  // The knob is drawn 6px in from the left edge, and the arrow has to sit on it.
+  expect((arrow?.x ?? 0) - (button?.x ?? 0)).toBeCloseTo(6, 0);
+});
