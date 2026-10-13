@@ -262,6 +262,9 @@ export function App() {
   const pastedXml = looksLikeXml(input) || pastedResponse;
   const pastedToken = looksLikeJwt(input);
   const pastedKind = tokenKind(input) ?? 'token';
+  // Pasted material is read as one protocol only, and any other choice cannot take it.
+  const readAs = pastedXml ? 'saml' : pastedToken ? 'oidc' : undefined;
+  const misplaced = readAs !== undefined && protocol !== 'auto' && protocol !== readAs;
   const inspectedKind =
     tokenKind(result?.raw['oidc.token']) ?? (result?.raw['saml.response'] ? 'response' : undefined);
 
@@ -372,15 +375,17 @@ export function App() {
           </button>
         </div>
         <p className="trust">
-          {pastedResponse
-            ? 'The response is read in this browser and is not sent anywhere. Metadata given as a URL is fetched by the proxy; pasted metadata stays here too.'
-            : pastedXml
-              ? 'Pasted XML is parsed in this browser and is not sent anywhere.'
-              : pastedToken
-                ? `This ${pastedKind} is read in this browser and is not sent anywhere. Only the issuer it names is asked for its public documents.`
-                : protocol === 'scim'
-                  ? 'The base URL is fetched by a proxy that accepts a URL and nothing else. A server that wants a token can only be read from the command line, because no credential is ever sent from here.'
-                  : 'URLs are fetched by a proxy that accepts a URL and nothing else. Credentials are never requested here.'}
+          {misplaced
+            ? `A pasted ${pastedResponse ? 'SAML response' : pastedXml ? 'XML document' : pastedKind} cannot be inspected as ${protocol.toUpperCase()}. Choose Detect or ${readAs.toUpperCase()}, and it is read in this browser.`
+            : pastedResponse
+              ? 'The response is read in this browser and is not sent anywhere. Metadata given as a URL is fetched by the proxy; pasted metadata stays here too.'
+              : pastedXml
+                ? 'Pasted XML is parsed in this browser and is not sent anywhere.'
+                : pastedToken
+                  ? `This ${pastedKind} is read in this browser and is not sent anywhere. Only the issuer it names is asked for its public documents.`
+                  : protocol === 'scim'
+                    ? 'The base URL is fetched by a proxy that accepts a URL and nothing else. A server that wants a token can only be read from the command line, because no credential is ever sent from here.'
+                    : 'URLs are fetched by a proxy that accepts a URL and nothing else. Credentials are never requested here.'}
         </p>
       </form>
 

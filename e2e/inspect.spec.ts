@@ -531,6 +531,13 @@ test('shapes the form to the protocol chosen', async ({ page }) => {
   await expect(asOf).toHaveCount(0);
   await expect(page.locator('.trust')).toContainText('only be read from the command line');
 
+  // A token is read as OIDC, and says so under any other choice.
+  await target.fill(await idToken());
+  await expect(page.locator('.trust')).toContainText(
+    'A pasted ID token cannot be inspected as SCIM. Choose Detect or OIDC',
+  );
+  await target.fill('');
+
   // SAML offers the metadata a response is verified against, and sets it aside for any other target.
   await choose('SAML');
   await expect(target).toHaveAttribute('placeholder', /Metadata URL or XML, or a pasted response/);
@@ -547,6 +554,10 @@ test('shapes the form to the protocol chosen', async ({ page }) => {
   for (const other of ['OIDC', 'OAUTH', 'SCIM']) {
     await choose(other);
     await expect(metadata).toHaveCount(0);
+    // The form says so before Inspect is pressed, and names the choices that can read it.
+    await expect(page.locator('.trust')).toHaveText(
+      `A pasted SAML response cannot be inspected as ${other}. Choose Detect or SAML, and it is read in this browser.`,
+    );
   }
 });
 
