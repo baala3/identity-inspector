@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { parseJwt, verify } from '../src/jwt.js';
+import { looksLikeJwt, parseJwt, verify } from '../src/jwt.js';
 
 const segment = (value: unknown) => Buffer.from(JSON.stringify(value)).toString('base64url');
 const RSA = { modulusLength: 2048, publicExponent: new Uint8Array([1, 0, 1]) };
@@ -40,6 +40,14 @@ describe('verify', () => {
     if (!token) throw new Error('fixture token must parse');
     expect(await verify(token, 'RS256', { kty: 'RSA', n: 'AQAB' })).toBe('unusable');
     expect(await verify(token, 'ES256K', { kty: 'EC' })).toBe('unusable');
+  });
+});
+
+describe('looksLikeJwt', () => {
+  it('recognises a token and leaves hostnames alone', () => {
+    expect(looksLikeJwt(` ${segment({ alg: 'none' })}.${segment({})}.\n`)).toBe(true);
+    expect(looksLikeJwt('accounts.google.com')).toBe(false);
+    expect(looksLikeJwt('login.microsoftonline.com')).toBe(false);
   });
 });
 

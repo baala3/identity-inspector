@@ -13,8 +13,14 @@ export type JwtResult = { jwt: Jwt; error?: undefined } | { jwt?: undefined; err
 
 const COMPACT = /^[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]*$/;
 
-/** Three base64url segments: a signed token in compact form, not a URL or a document. */
-export const looksLikeJwt = (input: string) => COMPACT.test(input.trim());
+/**
+ * Three base64url segments whose first is a JSON object: a signed token in compact form.
+ * The shape alone is not enough, because a hostname such as accounts.google.com has it too.
+ */
+export function looksLikeJwt(input: string): boolean {
+  const token = input.trim();
+  return COMPACT.test(token) && object(token.slice(0, token.indexOf('.'))) !== undefined;
+}
 
 function bytes(segment: string): Uint8Array<ArrayBuffer> {
   const binary = atob(segment.replace(/-/g, '+').replace(/_/g, '/'));

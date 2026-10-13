@@ -48,6 +48,17 @@ describe('detect', () => {
     expect(calls).toHaveLength(0);
   });
 
+  it('does not mistake a three-part hostname for a token', async () => {
+    const { fetcher, calls } = server({
+      'https://accounts.example.com/.well-known/openid-configuration': '{}',
+    });
+    expect(await detect('accounts.example.com', fetcher)).toBe('oidc');
+    const workspace = await collect('accounts.example.com', fetcher);
+    expect(workspace.target.input).toBe('https://accounts.example.com');
+    expect(workspace.evidence.map((e) => e.kind)).toEqual(['oidc.discovery']);
+    expect(calls.length).toBeGreaterThan(0);
+  });
+
   it('falls back on the URL shape when the host is unreachable', async () => {
     const { fetcher } = server({ 'https://idp.example/saml/idp': 0 });
     expect(await detect('https://idp.example/saml/idp', fetcher)).toBe('saml');

@@ -89,6 +89,12 @@ test('judges time-bounded evidence at the chosen instant', async ({ page }) => {
   await expect(finding(page, 'saml.cert.validity')).toContainText('expired');
 });
 
+test('inspects a bare three-part hostname as a provider, not as a token', async ({ page }) => {
+  await inspect(page, 'nothing.example.invalid');
+  await expect(page.locator('.results-head h2')).toHaveText('OIDC https://nothing.example.invalid');
+  await expect(finding(page, 'oidc.discovery.reachable').locator('.badge')).toHaveText('error');
+});
+
 test('reports an unreachable target instead of failing', async ({ page }) => {
   await inspect(page, 'http://localhost:9/realms/none');
   await expect(finding(page, 'oidc.discovery.reachable').locator('.badge')).toHaveText('error');
