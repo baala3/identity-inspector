@@ -13,6 +13,7 @@ export type Provenance = 'discovered' | 'illustrative' | 'executed' | 'user-supp
 export type EvidenceKind =
   | 'oidc.discovery'
   | 'oidc.jwks'
+  | 'oidc.id-token'
   | 'saml.metadata'
   | 'scim.service-provider-config'
   | 'scim.resource-types'
@@ -91,8 +92,13 @@ export interface Check {
   title: string;
   citation: Citation;
   remediation?: Partial<Record<Role, string>>;
-  /** Returns nothing when the check does not apply to this workspace. */
-  run(ctx: CheckContext): Outcome | Outcome[] | undefined;
+  /**
+   * Returns nothing when the check does not apply to this workspace.
+   * Only a check that does signature math needs to be asynchronous.
+   */
+  run(
+    ctx: CheckContext,
+  ): Outcome | Outcome[] | undefined | Promise<Outcome | Outcome[] | undefined>;
 }
 
 export interface FlowStep {

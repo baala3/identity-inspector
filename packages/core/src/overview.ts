@@ -1,5 +1,6 @@
 import type { Element } from '@xmldom/xmldom';
 import { DS, MD } from './checks/saml.js';
+import { jwt } from './jwt.js';
 import type { Evidence, Fact, OverviewSection, Workspace } from './model.js';
 import { childElements, descendants, type Json, json, objects, strings, xml } from './parse.js';
 import { decodeBase64, integerBits, parseCertificate } from './x509.js';
@@ -31,6 +32,8 @@ const OIDC_ENDPOINTS: Array<[string, string]> = [
   ['pushed_authorization_request_endpoint', 'Pushed authorization requests'],
 ];
 
+const SHOWN_CLAIMS = new Set(['iss', 'sub', 'aud', 'azp', 'iat', 'nbf', 'exp']);
+
 function rsaBits(key: Json): number | undefined {
   if (typeof key.n !== 'string') return undefined;
   try {
@@ -40,10 +43,33 @@ function rsaBits(key: Json): number | undefined {
   }
 }
 
-function oidc(discovery: Evidence | undefined, jwks: Evidence | undefined): OverviewSection[] {
+const instant = (label: string, seconds: unknown): Fact[] =>
+  typeof seconds === 'number' ? text(label, new Date(seconds * 1000).toISOString()) : [];
+
+function oidc(
+  discovery: Evidence | undefined,
+  jwks: Evidence | undefined,
+  token: Evidence | undefined,
+): OverviewSection[] {
   const doc = (discovery && json(discovery)) ?? {};
   const keys = objects((jwks && json(jwks))?.keys);
+  const { header = {}, claims = {} } = (token && jwt(token).jwt) ?? {};
   return [
+    ...section('token', 'Pasted token', [
+      ...text('Algorithm', header.alg),
+      ...text('Key ID', header.kid),
+      ...text('Issuer', claims.iss),
+      ...text('Subject', claims.sub),
+      ...chips('Audience', typeof claims.aud === 'string' ? [claims.aud] : strings(claims.aud)),
+      ...text('Issued to', claims.azp),
+      ...instant('Issued at', claims.iat),
+      ...instant('Not before', claims.nbf),
+      ...instant('Expires at', claims.exp),
+      ...chips(
+        'Other claims',
+        Object.keys(claims).filter((claim) => !SHOWN_CLAIMS.has(claim)),
+      ),
+    ]),
     ...section('identity', 'Provider', [
       ...link('Issuer', doc.issuer),
       ...link('Discovery document', discovery?.source),
@@ -258,7 +284,8 @@ export function overviewFor(workspace: Workspace): OverviewSection[] {
   // An error response is not something the target publishes, whatever its body says.
   const find = (kind: Evidence['kind']) =>
     workspace.evidence.find((e) => e.kind === kind && (!e.fetch || e.fetch.status === 200));
-  if (workspace.target.protocol === 'oidc') return oidc(find('oidc.discovery'), find('oidc.jwks'));
+  if (workspace.target.protocol === 'oidc')
+    return oidc(find('oidc.discovery'), find('oidc.jwks'), find('oidc.id-token'));
   if (workspace.target.protocol === 'saml') return saml(find('saml.metadata'));
   return scim(workspace);
 }

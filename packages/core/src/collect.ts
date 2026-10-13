@@ -1,3 +1,4 @@
+import { looksLikeJwt, parseJwt } from './jwt.js';
 import type { Evidence, EvidenceKind, Fetcher, FetchResult, Protocol, Workspace } from './model.js';
 import { json, parseXml } from './parse.js';
 
@@ -14,6 +15,21 @@ function asUrl(input: string): string {
 }
 
 export async function collectOidc(input: string, fetcher: Fetcher): Promise<Workspace> {
+  if (looksLikeJwt(input)) {
+    const token: Evidence = {
+      id: 'oidc.id-token',
+      kind: 'oidc.id-token',
+      provenance: 'user-supplied',
+      raw: input.trim(),
+    };
+    // The token names its issuer, and only that URL is ever requested: the token itself stays here.
+    const iss = parseJwt(token.raw).jwt?.claims.iss;
+    if (typeof iss !== 'string' || !/^https?:\/\//i.test(iss)) {
+      return { target: { protocol: 'oidc', input: 'pasted token' }, evidence: [token] };
+    }
+    const { target, evidence } = await collectOidc(iss, fetcher);
+    return { target, evidence: [token, ...evidence] };
+  }
   // Accept an issuer, a bare domain, or the discovery URL itself.
   const issuer = asUrl(input).replace(WELL_KNOWN, '');
   const discovery = fetched(
@@ -93,6 +109,7 @@ const SCIM_PATH = /\/scim(\/|$)|\/(ServiceProviderConfig|ResourceTypes|Schemas)\
 
 export async function detect(input: string, fetcher: Fetcher): Promise<Protocol> {
   if (looksLikeXml(input)) return 'saml';
+  if (looksLikeJwt(input)) return 'oidc';
   const url = asUrl(input);
   if (url.includes(WELL_KNOWN)) return 'oidc';
   const { pathname } = new URL(url);

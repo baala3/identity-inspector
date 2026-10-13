@@ -39,7 +39,7 @@ self.onmessage = async ({ data }: MessageEvent<InspectRequest>) => {
       viaProxy(data.proxy),
       data.protocol ? { protocol: data.protocol } : {},
     );
-    const report = evaluate(workspace, data.at ? new Date(data.at) : new Date());
+    const report = await evaluate(workspace, data.at ? new Date(data.at) : new Date());
     reply({
       id: data.id,
       report,

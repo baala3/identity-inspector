@@ -85,6 +85,60 @@ const lacking = (key: string): Workspace => {
   return ws;
 };
 
+// --- ID token -----------------------------------------------------------
+
+const SECONDS = NOW.getTime() / 1000;
+const CLAIMS: Doc = {
+  iss: 'https://op.example',
+  sub: 'user-1',
+  aud: 'client-1',
+  iat: SECONDS - 60,
+  exp: SECONDS + 3600,
+  nonce: 'n-1',
+};
+
+const segment = (value: unknown) => Buffer.from(JSON.stringify(value)).toString('base64url');
+
+const signer = await crypto.subtle.generateKey({ name: 'ECDSA', namedCurve: 'P-256' }, true, [
+  'sign',
+  'verify',
+]);
+const { kty, crv, x, y } = await crypto.subtle.exportKey('jwk', signer.publicKey);
+const TOKEN_KEY: Doc = { kty, crv, x, y, kid: 'es', use: 'sig' };
+
+/** A token signed by the key the fixture provider publishes as kid "es". */
+async function signed(claims: Doc = {}, header: Doc = {}): Promise<string> {
+  const input = `${segment({ alg: 'ES256', kid: 'es', ...header })}.${segment({ ...CLAIMS, ...claims })}`;
+  const signature = await crypto.subtle.sign(
+    { name: 'ECDSA', hash: 'SHA-256' },
+    signer.privateKey,
+    Buffer.from(input),
+  );
+  return `${input}.${Buffer.from(signature).toString('base64url')}`;
+}
+
+/** A token whose signature nothing here can check: unsigned, or signed with a shared secret. */
+const unverifiable = (alg: string) => `${segment({ alg })}.${segment(CLAIMS)}.c2ln`;
+
+function withToken(raw: string, o: OidcOptions = {}): Workspace {
+  const workspace = oidc({
+    keys: [...KEYS, TOKEN_KEY],
+    ...o,
+    discovery: { id_token_signing_alg_values_supported: ['RS256', 'ES256'], ...o.discovery },
+  });
+  workspace.evidence.unshift({
+    id: 'oidc.id-token',
+    kind: 'oidc.id-token',
+    provenance: 'user-supplied',
+    raw,
+  });
+  return workspace;
+}
+
+const TOKEN = await signed();
+const [HEAD = '', , TAIL = ''] = TOKEN.split('.');
+const ALTERED = `${HEAD}.${segment({ ...CLAIMS, sub: 'someone-else' })}.${TAIL}`;
+
 // --- SAML ---------------------------------------------------------------
 
 interface SamlOptions {
@@ -308,6 +362,78 @@ const scenarios: Record<string, Scenario[]> = {
     [oidc(), 'warn', /expired/, new Date('2031-01-01T00:00:00Z')],
   ],
 
+  'oidc.id-token.format': [
+    [withToken(TOKEN), 'pass'],
+    [withToken(`${segment({})}.bm90.c2ln`), 'error', /payload does not decode/],
+  ],
+  'oidc.id-token.alg': [
+    [withToken(TOKEN), 'pass', /provider advertises/],
+    [withToken(unverifiable('none')), 'error', /unsigned/],
+    [withToken(unverifiable('HS256')), 'error', /does not advertise/],
+    [
+      withToken(unverifiable('HS256'), {
+        discovery: { id_token_signing_alg_values_supported: ['RS256', 'HS256'] },
+      }),
+      'warn',
+      /shared-secret/,
+    ],
+  ],
+  'oidc.id-token.key': [
+    [withToken(TOKEN), 'pass'],
+    [
+      withToken(await signed({}, { kid: 'gone' })),
+      'error',
+      /does not publish \(it publishes a, b, es\)/,
+    ],
+    [withToken(await signed({}, { kid: 'a' })), 'error', /cannot sign with ES256/],
+    [withToken(await signed({}, { kid: undefined })), 'info', /Only one published key/],
+    [
+      withToken(await signed({}, { kid: undefined }), {
+        keys: [TOKEN_KEY, { ...TOKEN_KEY, kid: 'es-2' }],
+      }),
+      'warn',
+      /2 published keys fit/,
+    ],
+  ],
+  'oidc.id-token.signature': [
+    [withToken(TOKEN), 'pass', /verifies with ES256 against kid "es"/],
+    [withToken(await signed({}, { kid: undefined })), 'pass'],
+    [withToken(ALTERED), 'error', /does not verify/],
+    [withToken(unverifiable('HS256')), 'info', /client secret/],
+    [withToken(TOKEN, { keys: KEYS }), 'info', /no published key fits/],
+  ],
+  'oidc.id-token.issuer': [
+    [withToken(TOKEN), 'pass'],
+    [withToken(await signed({ iss: 'https://op.example/' })), 'error', /trailing slash/],
+  ],
+  'oidc.id-token.required-claims': [
+    [withToken(TOKEN), 'pass'],
+    [
+      withToken(await signed({ sub: undefined, exp: '1900000000' })),
+      'error',
+      /"sub" is missing, "exp" is not a number/,
+    ],
+  ],
+  'oidc.id-token.time': [
+    [withToken(TOKEN), 'pass', /in 1 hour/],
+    [
+      withToken(TOKEN),
+      'warn',
+      /expired at 2027-06-01T01:00:00.000Z, 2 days before/,
+      new Date('2027-06-03T01:00:00Z'),
+    ],
+    [withToken(await signed({ nbf: SECONDS + 600 })), 'error', /not valid until/],
+    [withToken(await signed({ iat: SECONDS + 1200 })), 'warn', /One of the two clocks/],
+  ],
+  'oidc.id-token.audience': [
+    [withToken(TOKEN), 'info', /addressed to client-1/],
+    [withToken(await signed({ aud: ['client-1', 'api'] })), 'warn', /no "azp"/],
+    [
+      withToken(await signed({ aud: ['client-1', 'api'], azp: 'client-1' })),
+      'info',
+      /issued to client-1/,
+    ],
+  ],
   'saml.metadata.reachable': [
     [samlFetched(200), 'pass'],
     [samlFetched(503), 'error'],
@@ -488,8 +614,8 @@ describe('check catalog', () => {
       });
 
       cases.forEach(([workspace, severity, detail, instant], index) => {
-        it(`scenario ${index + 1} yields ${severity}${detail ? ` matching ${detail}` : ''}`, () => {
-          const found = evaluate(workspace, instant ?? NOW).findings.filter(
+        it(`scenario ${index + 1} yields ${severity}${detail ? ` matching ${detail}` : ''}`, async () => {
+          const found = (await evaluate(workspace, instant ?? NOW)).findings.filter(
             (f) => f.checkId === check.id,
           );
           expect(found.map((f) => f.severity)).toContain(severity);
@@ -503,38 +629,39 @@ describe('check catalog', () => {
 describe('clean fixtures', () => {
   it.each([
     ['oidc', oidc()],
+    ['oidc with a pasted token', withToken(TOKEN)],
     ['saml idp', saml()],
     ['saml sp', saml({ role: 'sp' })],
     ['scim', scim()],
-  ])('%s raises no errors or warnings', (_name, workspace) => {
-    const { summary } = evaluate(workspace, NOW);
+  ])('%s raises no errors or warnings', async (_name, workspace) => {
+    const { summary } = await evaluate(workspace, NOW);
     expect([summary.error, summary.warn]).toEqual([0, 0]);
   });
 });
 
 describe('report', () => {
-  it('labels every finding from pasted evidence as user-supplied and every flow step as unperformed', () => {
-    const report = evaluate(saml(), NOW);
+  it('labels every finding from pasted evidence as user-supplied and every flow step as unperformed', async () => {
+    const report = await evaluate(saml(), NOW);
     expect(new Set(report.findings.map((f) => f.provenance))).toEqual(new Set(['user-supplied']));
     expect(new Set(report.flow.map((s) => s.provenance))).toEqual(new Set(['illustrative']));
   });
 
-  it('carries published endpoints into the flow', () => {
-    const report = evaluate(oidc(), NOW);
+  it('carries published endpoints into the flow', async () => {
+    const report = await evaluate(oidc(), NOW);
     expect(report.flow.find((s) => s.id === 'token')?.endpoint).toBe('https://op.example/token');
   });
 });
 
 describe('overview', () => {
-  const facts = (workspace: Workspace) =>
+  const facts = async (workspace: Workspace) =>
     Object.fromEntries(
-      evaluate(workspace, NOW).overview.flatMap((s) =>
+      (await evaluate(workspace, NOW)).overview.flatMap((s) =>
         s.facts.map((f) => [`${s.id}/${f.label}`, f.values]),
       ),
     );
 
-  it('restates what an OpenID Provider publishes', () => {
-    expect(facts(oidc())).toMatchObject({
+  it('restates what an OpenID Provider publishes', async () => {
+    expect(await facts(oidc())).toMatchObject({
       'identity/Issuer': ['https://op.example'],
       'endpoints/Token': ['https://op.example/token'],
       'capabilities/Scopes': ['openid', 'email'],
@@ -543,8 +670,8 @@ describe('overview', () => {
     });
   });
 
-  it('restates what SAML metadata publishes', () => {
-    expect(facts(saml())).toMatchObject({
+  it('restates what SAML metadata publishes', async () => {
+    expect(await facts(saml())).toMatchObject({
       'identity/Entity ID': ['https://idp.example/metadata'],
       'identity/Roles': ['Identity Provider'],
       'identity/NameID formats': ['emailAddress'],
@@ -558,8 +685,8 @@ describe('overview', () => {
     });
   });
 
-  it('restates what a SCIM server publishes', () => {
-    expect(facts(scim())).toMatchObject({
+  it('restates what a SCIM server publishes', async () => {
+    expect(await facts(scim())).toMatchObject({
       'capabilities/PATCH': ['yes'],
       'capabilities/Filtering': ['yes, maxResults 200'],
       'endpoints/User at /Users': ['core:2.0:User', 'extension:enterprise:2.0:User'],
@@ -567,10 +694,20 @@ describe('overview', () => {
     });
   });
 
-  it('is empty rather than wrong when nothing could be read', () => {
-    expect(
-      evaluate(oidc({ discoveryStatus: 404, jwksStatus: 404 }), NOW).overview.map((s) => s.id),
-    ).not.toContain('endpoints');
-    expect(evaluate(pasted('<broken'), NOW).overview).toEqual([]);
+  it('restates the claims of a pasted token', async () => {
+    expect(await facts(withToken(TOKEN))).toMatchObject({
+      'token/Algorithm': ['ES256'],
+      'token/Key ID': ['es'],
+      'token/Subject': ['user-1'],
+      'token/Audience': ['client-1'],
+      'token/Expires at': ['2027-06-01T01:00:00.000Z'],
+      'token/Other claims': ['nonce'],
+    });
+  });
+
+  it('is empty rather than wrong when nothing could be read', async () => {
+    const unreachable = await evaluate(oidc({ discoveryStatus: 404, jwksStatus: 404 }), NOW);
+    expect(unreachable.overview.map((s) => s.id)).not.toContain('endpoints');
+    expect((await evaluate(pasted('<broken'), NOW)).overview).toEqual([]);
   });
 });
