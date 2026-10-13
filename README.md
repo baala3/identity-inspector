@@ -39,7 +39,8 @@ Set `IDI_ALLOW_PRIVATE=1` to let the local proxy reach a target on your own mach
 ## Status
 
 Milestone 1: static inspection of published documents for all three protocols, in the CLI and the web interface.
-Pasted tokens and assertions, signature verification, probes, and live flows are not built yet, and the hosted deployment is not live.
+It is hosted at https://identity-inspector.identity-inspector-proxy.workers.dev.
+Pasted tokens and assertions, signature verification, probes, and live flows are not built yet.
 
 ## Layout
 
