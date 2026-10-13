@@ -10,10 +10,30 @@ function fetched(kind: EvidenceKind, result: FetchResult): Evidence {
 }
 
 const WELL_KNOWN = '/.well-known/openid-configuration';
+const OAUTH_WELL_KNOWN = '/.well-known/oauth-authorization-server';
 
 function asUrl(input: string): string {
   const trimmed = input.trim();
   return /^https?:\/\//i.test(trimmed) ? trimmed : `https://${trimmed}`;
+}
+
+/** RFC 8414 puts the well-known segment ahead of any path in the issuer, not after it. */
+function oauthMetadataUrl(issuer: string): string {
+  const { origin, pathname, search } = new URL(issuer);
+  return origin + OAUTH_WELL_KNOWN + pathname.replace(/\/$/, '') + search;
+}
+
+const openidConfigurationUrl = (issuer: string) => issuer.replace(/\/$/, '') + WELL_KNOWN;
+
+const usable = (evidence: Evidence | undefined) =>
+  evidence?.fetch?.status === 200 && json(evidence) !== undefined;
+
+/** The key set a metadata document points at, when it points at one. */
+async function keysOf(metadata: Evidence, fetcher: Fetcher): Promise<Evidence[]> {
+  const jwksUri = json(metadata)?.jwks_uri;
+  return typeof jwksUri === 'string' && URL.canParse(jwksUri)
+    ? [fetched('oidc.jwks', await fetcher(jwksUri))]
+    : [];
 }
 
 export async function collectOidc(input: string, fetcher: Fetcher): Promise<Workspace> {
@@ -29,21 +49,48 @@ export async function collectOidc(input: string, fetcher: Fetcher): Promise<Work
     if (typeof iss !== 'string' || !/^https?:\/\//i.test(iss)) {
       return { target: { protocol: 'oidc', input: 'pasted token' }, evidence: [token] };
     }
-    const { target, evidence } = await collectOidc(iss, fetcher);
+    const asOidc = await collectOidc(iss, fetcher);
+    // An access token may come from a plain authorization server, which has no OpenID configuration.
+    const { target, evidence } =
+      usable(asOidc.evidence[0]) || !URL.canParse(iss)
+        ? asOidc
+        : await preferring(asOidc, collectOauth(iss, fetcher));
     return { target, evidence: [token, ...evidence] };
   }
   // Accept an issuer, a bare domain, or the discovery URL itself.
   const issuer = asUrl(input).replace(WELL_KNOWN, '');
-  const discovery = fetched(
-    'oidc.discovery',
-    await fetcher(issuer.replace(/\/$/, '') + WELL_KNOWN),
+  const discovery = fetched('oidc.discovery', await fetcher(openidConfigurationUrl(issuer)));
+  return {
+    target: { protocol: 'oidc', input: issuer },
+    evidence: [discovery, ...(await keysOf(discovery, fetcher))],
+  };
+}
+
+/** The other workspace, when the target turns out to publish what it is judged by. */
+async function preferring(fallback: Workspace, other: Promise<Workspace>): Promise<Workspace> {
+  const workspace = await other;
+  return workspace.evidence[0]?.fetch?.status === 200 ? workspace : fallback;
+}
+
+/**
+ * A plain OAuth 2.0 authorization server, read from the metadata RFC 8414 defines.
+ * Its OpenID configuration is asked for as well, only to say whether it has one.
+ */
+export async function collectOauth(input: string, fetcher: Fetcher): Promise<Workspace> {
+  // Accept an issuer, a bare domain, or the metadata URL itself.
+  const issuer = asUrl(input).replace(OAUTH_WELL_KNOWN, '');
+  const metadata = fetched(
+    'oauth.metadata',
+    await fetcher(URL.canParse(issuer) ? oauthMetadataUrl(issuer) : issuer),
   );
-  const evidence = [discovery];
-  const jwksUri = json(discovery)?.jwks_uri;
-  if (typeof jwksUri === 'string' && URL.canParse(jwksUri)) {
-    evidence.push(fetched('oidc.jwks', await fetcher(jwksUri)));
-  }
-  return { target: { protocol: 'oidc', input: issuer }, evidence };
+  return {
+    target: { protocol: 'oauth', input: issuer },
+    evidence: [
+      metadata,
+      fetched('oidc.discovery', await fetcher(openidConfigurationUrl(issuer))),
+      ...(await keysOf(metadata, fetcher)),
+    ],
+  };
 }
 
 export const looksLikeXml = (input: string) => input.trimStart().startsWith('<');
@@ -149,6 +196,7 @@ export async function collect(
   const protocol = options.protocol ?? (await detect(input, fetcher));
   if (protocol === 'saml') return collectSaml(input, fetcher, options.samlMetadata);
   if (protocol === 'scim') return collectScim(input, fetcher, options.scimHeaders);
+  if (protocol === 'oauth') return collectOauth(input, fetcher);
   return collectOidc(input, fetcher);
 }
 
@@ -160,6 +208,7 @@ export async function detect(input: string, fetcher: Fetcher): Promise<Protocol>
   if (looksLikeJwt(input)) return 'oidc';
   const url = asUrl(input);
   if (url.includes(WELL_KNOWN)) return 'oidc';
+  if (url.includes(OAUTH_WELL_KNOWN)) return 'oauth';
   const { pathname } = new URL(url);
   if (SCIM_PATH.test(pathname)) return 'scim';
 
@@ -171,6 +220,10 @@ export async function detect(input: string, fetcher: Fetcher): Promise<Protocol>
 
   const discovery = await fetcher(url.replace(/\/$/, '') + WELL_KNOWN);
   if (discovery.status === 200) return 'oidc';
+
+  // A plain OAuth 2.0 authorization server publishes no OpenID configuration, only this.
+  const metadata = await fetcher(oauthMetadataUrl(url));
+  if (metadata.status === 200) return 'oauth';
 
   const config = await fetcher(`${url.replace(/\/$/, '')}/ServiceProviderConfig`);
   if (config.status === 200 || config.status === 401) return 'scim';

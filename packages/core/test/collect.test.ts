@@ -39,6 +39,29 @@ describe('detect', () => {
     expect(await detect('op.example', fetcher)).toBe('oidc');
   });
 
+  it('recognises an authorization server by its metadata, before trying SCIM', async () => {
+    const { fetcher, calls } = server({
+      'https://as.example/.well-known/oauth-authorization-server': '{}',
+    });
+    expect(await detect('as.example', fetcher)).toBe('oauth');
+    expect(calls.some((c) => c.url.endsWith('/ServiceProviderConfig'))).toBe(false);
+  });
+
+  it('recognises the URL of authorization server metadata without any request', async () => {
+    const { fetcher, calls } = server({});
+    const url = 'https://as.example/.well-known/oauth-authorization-server/tenant';
+    expect(await detect(url, fetcher)).toBe('oauth');
+    expect(calls).toHaveLength(0);
+  });
+
+  it('takes a target that publishes both documents for an OpenID Provider', async () => {
+    const { fetcher } = server({
+      'https://op.example/.well-known/openid-configuration': '{}',
+      'https://op.example/.well-known/oauth-authorization-server': '{}',
+    });
+    expect(await detect('op.example', fetcher)).toBe('oidc');
+  });
+
   it('recognises a SCIM base URL that demands authentication', async () => {
     const { fetcher } = server({ 'https://app.example/api/ServiceProviderConfig': 401 });
     expect(await detect('https://app.example/api', fetcher)).toBe('scim');
@@ -81,6 +104,73 @@ describe('collect', () => {
       ['oidc.discovery', 'https://op.example/.well-known/openid-configuration'],
       ['oidc.jwks', 'https://keys.example/jwks'],
     ]);
+  });
+
+  it('reads an authorization server from its metadata, and asks whether it has an OpenID configuration', async () => {
+    const { fetcher, calls } = server({
+      // RFC 8414 puts the well-known segment ahead of the issuer path, not after it.
+      'https://as.example/.well-known/oauth-authorization-server/tenant': JSON.stringify({
+        issuer: 'https://as.example/tenant',
+        jwks_uri: 'https://as.example/tenant/jwks',
+      }),
+      'https://as.example/tenant/jwks': '{"keys":[]}',
+    });
+    for (const input of [
+      'https://as.example/tenant/',
+      'https://as.example/.well-known/oauth-authorization-server/tenant',
+    ]) {
+      calls.length = 0;
+      const workspace = await collect(input, fetcher);
+      expect(workspace.target).toEqual({
+        protocol: 'oauth',
+        input: input.replace(/\/\.well-known\/[^/]+/, ''),
+      });
+      expect(workspace.evidence.map((e) => [e.kind, e.fetch?.status])).toEqual([
+        ['oauth.metadata', 200],
+        ['oidc.discovery', 404],
+        ['oidc.jwks', 200],
+      ]);
+      expect(calls.slice(-3).map((c) => c.url)).toEqual([
+        'https://as.example/.well-known/oauth-authorization-server/tenant',
+        'https://as.example/tenant/.well-known/openid-configuration',
+        'https://as.example/tenant/jwks',
+      ]);
+    }
+  });
+
+  it('does not look for authorization server metadata when told the target is an OpenID Provider', async () => {
+    const { fetcher, calls } = server({
+      'https://as.example/.well-known/oauth-authorization-server': '{}',
+    });
+    const workspace = await collect('as.example', fetcher, { protocol: 'oidc' });
+    expect(workspace.target.protocol).toBe('oidc');
+    expect(workspace.evidence.map((e) => [e.kind, e.fetch?.status])).toEqual([
+      ['oidc.discovery', 404],
+    ]);
+    expect(calls).toHaveLength(1);
+  });
+
+  it('checks a pasted token against a plain authorization server when its issuer is one', async () => {
+    const { fetcher, calls } = server({
+      'https://op.example/.well-known/oauth-authorization-server': JSON.stringify({
+        jwks_uri: 'https://op.example/jwks',
+      }),
+      'https://op.example/jwks': '{"keys":[]}',
+    });
+    const workspace = await collect(TOKEN, fetcher);
+    expect(workspace.target).toEqual({ protocol: 'oauth', input: 'https://op.example' });
+    expect(workspace.evidence.map((e) => e.kind)).toEqual([
+      'oidc.token',
+      'oauth.metadata',
+      'oidc.discovery',
+      'oidc.jwks',
+    ]);
+    expect(JSON.stringify(calls)).not.toContain(TOKEN.split('.')[2]);
+
+    // An issuer that publishes neither document is still reported as the provider it claims to be.
+    const neither = await collect(TOKEN, server({}).fetcher);
+    expect(neither.target.protocol).toBe('oidc');
+    expect(neither.evidence.map((e) => e.kind)).toEqual(['oidc.token', 'oidc.discovery']);
   });
 
   it('asks the issuer a pasted token names for its documents, and sends the token nowhere', async () => {

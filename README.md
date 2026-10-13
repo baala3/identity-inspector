@@ -1,6 +1,6 @@
 # Identity Inspector
 
-Diagnostics for OIDC, SAML SSO, and SCIM integrations.
+Diagnostics for OIDC, OAuth 2.0, SAML SSO, and SCIM integrations.
 
 It reads what a target publishes, judges it against the specifications, current security practice, and known interop problems, and says plainly which claims were verified and which were only read from a document.
 
@@ -17,6 +17,7 @@ Every finding carries a provenance:
 pnpm install
 pnpm build
 node packages/cli/dist/main.js inspect accounts.google.com
+node packages/cli/dist/main.js inspect mcp.notion.com
 node packages/cli/dist/main.js inspect https://mocksaml.com/api/saml/metadata
 node packages/cli/dist/main.js inspect ./idp-metadata.xml --format md
 node packages/cli/dist/main.js inspect ./id-token.jwt
@@ -24,6 +25,10 @@ node packages/cli/dist/main.js inspect ./saml-response.xml --metadata https://id
 SCIM_TOKEN=... node packages/cli/dist/main.js inspect https://app.example/scim/v2
 ```
 
+A target with no OpenID configuration that publishes OAuth 2.0 authorization server metadata (RFC 8414) is detected as `oauth`.
+It is judged as an authorization server under `oauth.metadata.*` checks, and the rules that only bind an OpenID Provider are not applied.
+Most MCP servers are targets of this kind.
+Pass `--protocol oauth` to judge a target that publishes both documents by its authorization server metadata.
 A file holding an ID token or a JWT access token is checked against the keys of the issuer it names: its signature is verified, and its claims are judged at the evaluation instant.
 The report says which of the two kinds it took the token for, and why.
 A file holding a SAML response, as XML or as the base64 the browser posted, has its signatures verified and its assertion judged.
@@ -46,7 +51,7 @@ Set `IDI_ALLOW_PRIVATE=1` to let the local proxy reach a target on your own mach
 
 ## Status
 
-Milestone 1: static inspection of published documents for all three protocols, in the CLI and the web interface.
+Milestone 1: static inspection of published documents for all four protocols, in the CLI and the web interface.
 Milestone 2, in progress: pasted ID tokens, JWT access tokens, and SAML responses with signature verification are built.
 It is hosted at https://identity-inspector.balashekhar.workers.dev.
 Encrypted assertions, probes, and live flows are not built yet.

@@ -1,4 +1,4 @@
-import { oidcChecks } from './checks/oidc.js';
+import { forEitherServer, oidcChecks } from './checks/oidc.js';
 import { samlChecks } from './checks/saml.js';
 import { samlResponseChecks } from './checks/saml-response.js';
 import { scimChecks } from './checks/scim.js';
@@ -9,7 +9,7 @@ import { overviewFor } from './overview.js';
 
 export const checks: readonly Check[] = [
   ...oidcChecks,
-  ...tokenChecks,
+  ...tokenChecks.map(forEitherServer),
   ...samlChecks,
   ...samlResponseChecks,
   ...scimChecks,
@@ -21,7 +21,7 @@ const ORDER: Record<Severity, number> = { error: 0, warn: 1, info: 2, pass: 3 };
 export async function evaluate(workspace: Workspace, instant: Date = new Date()): Promise<Report> {
   const findings: Finding[] = [];
   for (const check of checks) {
-    if (check.protocol !== workspace.target.protocol) continue;
+    if (![check.protocol].flat().includes(workspace.target.protocol)) continue;
     const result = await check.run({ workspace, instant });
     for (const outcome of result === undefined ? [] : [result].flat()) {
       findings.push({

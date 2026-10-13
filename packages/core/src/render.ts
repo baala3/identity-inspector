@@ -5,6 +5,8 @@ const MARK: Record<Severity, string> = { error: 'ERROR', warn: 'WARN', info: 'IN
 const ROLE: Record<Role, string> = {
   op: 'If you run the OpenID Provider',
   rp: 'If you run the Relying Party',
+  as: 'If you run the authorization server',
+  client: 'If you run the client',
   idp: 'If you run the Identity Provider',
   sp: 'If you run the Service Provider',
   'scim-server': 'If you run the SCIM server',

@@ -7,7 +7,18 @@ const PAD = 60;
 const GUTTER = 24;
 
 // The user agent sits on the left and the party that issues identity on the right.
-const LANE_ORDER = ['Browser', 'SCIM client', 'RP', 'SP', 'OP', 'IdP', 'SCIM server'];
+const LANE_ORDER = [
+  'Browser',
+  'SCIM client',
+  'RP',
+  'Client',
+  'API',
+  'SP',
+  'OP',
+  'AS',
+  'IdP',
+  'SCIM server',
+];
 
 const WORST: Severity[] = ['error', 'warn', 'info', 'pass'];
 

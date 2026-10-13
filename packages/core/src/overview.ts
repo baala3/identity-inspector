@@ -1,4 +1,5 @@
 import type { Element } from '@xmldom/xmldom';
+import { metadataOf } from './checks/oidc.js';
 import { DS, MD } from './checks/saml.js';
 import { message, SAML, SAMLP } from './checks/saml-response.js';
 import { jwt, KIND_LABEL, kindOf } from './jwt.js';
@@ -59,11 +60,12 @@ const instant = (label: string, seconds: unknown): Fact[] =>
   typeof seconds === 'number' ? text(label, new Date(seconds * 1000).toISOString()) : [];
 
 function oidc(
-  discovery: Evidence | undefined,
+  metadata: Evidence | undefined,
   jwks: Evidence | undefined,
   token: Evidence | undefined,
 ): OverviewSection[] {
-  const doc = (discovery && json(discovery)) ?? {};
+  const doc = (metadata && json(metadata)) ?? {};
+  const oauth = metadata?.kind === 'oauth.metadata';
   const keys = objects((jwks && json(jwks))?.keys);
   const parsed = token && jwt(token).jwt;
   const { header = {}, claims = {} } = parsed ?? {};
@@ -89,9 +91,9 @@ function oidc(
         Object.keys(claims).filter((claim) => !SHOWN_CLAIMS.has(claim)),
       ),
     ]),
-    ...section('identity', 'Provider', [
+    ...section('identity', oauth ? 'Authorization server' : 'Provider', [
       ...link('Issuer', doc.issuer),
-      ...link('Discovery document', discovery?.source),
+      ...link(oauth ? 'Metadata document' : 'Discovery document', metadata?.source),
       ...chips('Subject types', strings(doc.subject_types_supported)),
     ]),
     ...section(
@@ -362,8 +364,10 @@ export function overviewFor(workspace: Workspace): OverviewSection[] {
   // An error response is not something the target publishes, whatever its body says.
   const find = (kind: Evidence['kind']) =>
     workspace.evidence.find((e) => e.kind === kind && (!e.fetch || e.fetch.status === 200));
-  if (workspace.target.protocol === 'oidc')
-    return oidc(find('oidc.discovery'), find('oidc.jwks'), find('oidc.token'));
+  if (workspace.target.protocol === 'oidc' || workspace.target.protocol === 'oauth') {
+    const metadata = metadataOf(workspace);
+    return oidc(metadata && find(metadata.kind), find('oidc.jwks'), find('oidc.token'));
+  }
   if (workspace.target.protocol === 'saml')
     return [...samlResponse(find('saml.response')), ...saml(find('saml.metadata'))];
   return scim(workspace);
