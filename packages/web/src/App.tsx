@@ -35,6 +35,7 @@ const EXAMPLES = [
   ['OIDC', 'appleid.apple.com'],
   ['OIDC', 'gitlab.com'],
   ['SAML', 'https://mocksaml.com/api/saml/metadata'],
+  ['SCIM', 'https://api.slack.com/scim/v2'],
 ] as const;
 
 const SEVERITIES: Severity[] = ['error', 'warn', 'info', 'pass'];

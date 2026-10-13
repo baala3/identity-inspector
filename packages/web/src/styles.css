@@ -625,6 +625,8 @@ footer::before {
 
 .examples {
   display: grid;
+  /* Without a zero minimum, a long URL widens the column past the card instead of being cut short. */
+  grid-template-columns: minmax(0, 1fr);
   gap: 8px;
 }
 
@@ -659,6 +661,7 @@ footer::before {
 }
 
 .examples code {
+  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
